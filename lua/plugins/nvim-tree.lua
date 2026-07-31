@@ -33,17 +33,22 @@ return {
         relativenumber = true,
       },
       renderer = {
-        -- Keep the tree a plain file structure: no git-status tinting of
-        -- filenames and no per-file git status marker column. The git status
-        -- diff view (<leader>gs / <leader>dv) is where changes are inspected.
-        highlight_git = false,
+        -- Changed files (the same set <leader>gs lists) are marked ONLY by
+        -- tinting the file name in the accent purple -- "name", never "icon"
+        -- or "all". With icons.show.git left off, the old status markers
+        -- (✗ ★ ✓ ➜ ...) and their per-status colors stay gone: the tree keeps
+        -- its plain structure and the color is the whole marker.
+        highlight_git = "name",
         icons = {
           show = { folder = true, file = true, git = false, folder_arrow = true },
         },
       },
       update_focused_file = { enable = true, update_root = false },
-      filters = { dotfiles = false },
-      git = { enable = false },
+      -- git_ignored = false keeps ignored files listed as before -- enabling the
+      -- git integration would otherwise start hiding them.
+      filters = { dotfiles = false, git_ignored = false },
+      -- Required for highlight_git: without it nodes carry no status at all.
+      git = { enable = true },
       actions = {
         open_file = {
           window_picker = { enable = false },

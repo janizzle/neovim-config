@@ -22,8 +22,15 @@ local function ensure_normal_buffer()
   vim.cmd("enew")
 end
 
-local function setup_layout()
+-- force = true (the :Layout command / <leader>l) rebuilds unconditionally and
+-- is therefore also the way out of a leetcode session; the automatic triggers
+-- below leave a leetcode layout alone.
+local function setup_layout(force)
   if state.building then return end
+  if state.leetcode then
+    if not force then return end
+    state.leetcode = false
+  end
   state.building = true
   ensure_normal_buffer()
   vim.cmd("only")
@@ -42,6 +49,21 @@ local function setup_layout()
   state.building = false
 end
 
+-- Diffview (and any plain :diffsplit) builds its own multi-window tabpage that
+-- has no file tree in it. Without this check layout_intact() reports "broken",
+-- and setup_layout()'s `only` closes the diff windows the moment the
+-- working-tree buffer is entered -- which looks like <leader>dv opening and
+-- instantly closing again.
+local function diff_tabpage()
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    local ft = vim.bo[vim.api.nvim_win_get_buf(win)].filetype
+    if vim.wo[win].diff or ft == "DiffviewFiles" or ft == "DiffviewFileHistory" then
+      return true
+    end
+  end
+  return false
+end
+
 local function layout_intact()
   local has_tree = false
   for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
@@ -51,15 +73,16 @@ local function layout_intact()
   return has_tree
 end
 
-vim.api.nvim_create_user_command("Layout", setup_layout, {})
-vim.keymap.set("n", "<leader>l", setup_layout, { desc = "Restore startup layout" })
+vim.api.nvim_create_user_command("Layout", function() setup_layout(true) end, {})
+vim.keymap.set("n", "<leader>l", function() setup_layout(true) end, { desc = "Restore startup layout" })
 
-vim.api.nvim_create_autocmd("VimEnter", { callback = setup_layout })
+vim.api.nvim_create_autocmd("VimEnter", { callback = function() setup_layout() end })
 
 vim.api.nvim_create_autocmd("BufEnter", {
   callback = function()
     if state.building then return end
     if vim.bo.buftype ~= "" or vim.bo.filetype == "NvimTree" then return end
+    if diff_tabpage() then return end
     if layout_intact() then return end
     vim.schedule(setup_layout)
   end,

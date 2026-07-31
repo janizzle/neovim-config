@@ -102,6 +102,13 @@ local function improve_ui_colors()
   hl(0, "TelescopeResultsTitle",  { fg = mag, bold = true })
   hl(0, "TelescopePromptTitle",   { fg = mag, bold = true })
   hl(0, "TelescopePreviewTitle",  { fg = mag, bold = true })
+
+  -- nvim-tree: files with a git status (what <leader>gs lists) and the folders
+  -- containing them, name-tinted only. git-ignored is left out.
+  for _, kind in ipairs({ "Dirty", "Staged", "New", "Renamed", "Deleted", "Merge" }) do
+    hl(0, "NvimTreeGitFile" .. kind .. "HL",   { fg = purple })
+    hl(0, "NvimTreeGitFolder" .. kind .. "HL", { fg = purple })
+  end
 end
 improve_ui_colors()
 vim.api.nvim_create_autocmd("ColorScheme", { callback = improve_ui_colors })

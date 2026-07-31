@@ -23,6 +23,7 @@ for _, name in ipairs({
   "git-conflict",
   "virt-column",
   "vim-be-good",
+  "leetcode",
 }) do
   specs[#specs + 1] = require("plugins." .. name)
 end
