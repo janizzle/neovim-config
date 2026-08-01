@@ -130,10 +130,21 @@ return {
         -- are what make the picker ignore which split it was opened from.
         width  = 0.9,
         height = 0.9,
-        preview_width = 0.55,
-        prompt_position = "bottom",
         -- 0 = never fall back to the no-preview layout.
         preview_cutoff = 0,
+        -- Strategy-specific keys MUST stay nested under their strategy. A
+        -- top-level layout_config key is merged into EVERY strategy, and a
+        -- strategy that doesn't recognise a key hard-errors on it rather than
+        -- ignoring it -- so one stray default breaks other plugins' pickers:
+        --   preview_width   -> rejected by "center" (what themes.get_dropdown
+        --                      uses, e.g. leetcode.nvim's `:Leet lang`)
+        --   prompt_position -> rejected by "cursor"
+        -- Only "horizontal" is our own strategy, so that's the only one to
+        -- configure; themed pickers bring their own values.
+        horizontal = {
+          preview_width = 0.55,
+          prompt_position = "bottom",
+        },
       },
       -- "descending" is what pairs with a bottom prompt: best match sits
       -- closest to where you're typing.

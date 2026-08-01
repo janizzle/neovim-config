@@ -6,12 +6,24 @@ local M = {}
 local lines = {
   "",
   "",
-  "    ███╗   ██╗███████╗ ██████╗ ██╗   ██╗██╗███╗   ███╗",
-  "    ████╗  ██║██╔════╝██╔═══██╗██║   ██║██║████╗ ████║",
-  "    ██╔██╗ ██║█████╗  ██║   ██║██║   ██║██║██╔████╔██║",
-  "    ██║╚██╗██║██╔══╝  ██║   ██║╚██╗ ██╔╝██║██║╚██╔╝██║",
-  "    ██║ ╚████║███████╗╚██████╔╝ ╚████╔╝ ██║██║ ╚═╝ ██║",
-  "    ╚═╝  ╚═══╝╚══════╝ ╚═════╝   ╚═══╝  ╚═╝╚═╝     ╚═╝",
+  -- Vim's own mark: the V and the "im" strokes in solid blocks, sitting on the
+  -- shaded diamond. As in the original artwork the diamond is a backdrop rather
+  -- than a container -- the V's flags and the tail of the m overhang it.
+  "                                              ░",
+  "                                            ░░░░░",
+  "                              ██████    ██████░░░░░",
+  "                              ██████   ░██████░░░░░░░░",
+  "   ███╗   ██╗███████╗ ██████╗  ████  ░░░░████░░░░░░░░░░░",
+  "   ████╗  ██║██╔════╝██╔═══██╗ ████░░░░████░░███░░░░░░░░░░",
+  "   ██╔██╗ ██║█████╗  ██║   ██║ ████░░████░░░░░░░░░░░░░░░░░░░",
+  "   ██║╚██╗██║██╔══╝  ██║   ██║ ████████░░░░███░░███░███░███░░░",
+  "   ██║ ╚████║███████╗╚██████╔╝ ██████░░░░░███░░███░███░███░░",
+  "   ╚═╝  ╚═══╝╚══════╝ ╚═════╝  ████░░░░░░███░░███░███░███░",
+  "                               ██    ░░░███░░███░███░███",
+  "                                       ███░░███░███░███",
+  "                                          ░░░░░░░░░",
+  "                                            ░░░░░",
+  "                                              ░",
   "",
   "    ── Stock Neovim / plugin commands ──────────────────────────",
   "",
@@ -55,6 +67,23 @@ local lines = {
   "    Code (LSP)",
   "      <space>rn   Rename symbol       <space>ca   Code action",
   "",
+  "    ── LeetCode ────────────────────────────────────────────────",
+  "",
+  "    :Leet               Open the dashboard",
+  "    :Leet list          Pick a question   ·   :Leet daily",
+  "    :Leet lang          Switch language (php, python3, ...)",
+  "    :Leet run           Run LeetCode's testcases (remote)",
+  "    :Leet submit        Submit the solution",
+  "    :Leet console       Custom testcase + result panes (remote)",
+  "    :Leet desc          Toggle the question description",
+  "    :Leet cookie update Sign in (paste the leetcode.com session cookie)",
+  "",
+  "    ── Run PHP locally ─────────────────────────────────────────",
+  "",
+  "    :PhpRun             Run this buffer through the php CLI",
+  "    :PhpDriver          Append a driver stub to call your Solution",
+  "    :PhpRepl            Interactive php -a shell in a split",
+  "",
   "    ── Project commands ────────────────────────────────────────",
   "",
   "    Unit tests          phpunit -c phpunit-unit.xml",
@@ -79,12 +108,18 @@ function M.paint(buf)
 
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modified = false
+  -- Read by bufferline's name_formatter and lualine's filename component to
+  -- label this buffer "Welcome" instead of "[No Name]". Deliberately a buffer
+  -- variable rather than a real :file name -- naming the buffer would make
+  -- <leader>x / :update try to write a file called "Welcome" into the cwd.
+  vim.b[buf].welcome_screen = true
   vim.api.nvim_create_autocmd("InsertEnter", {
     buffer = buf,
     once = true,
     callback = function()
       vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "" })
       vim.bo[buf].modified = false
+      vim.b[buf].welcome_screen = nil   -- it's a scratch buffer again
     end,
   })
 end

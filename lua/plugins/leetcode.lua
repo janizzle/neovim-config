@@ -5,6 +5,10 @@
 -- First run: `:Leet cookie update` to sign in (paste the leetcode.com session
 -- cookie from a logged-in browser). Then `:Leet list` / `:Leet daily` to pick a
 -- question, `:Leet run` to test, `:Leet submit` to submit.
+--
+-- `:Leet run` / `:Leet console` execute on leetcode.com. To poke at a solution
+-- locally instead -- dumping an array mid-craft, say -- see config/php.lua:
+-- `:PhpRun`, `:PhpDriver`, `:PhpRepl`.
 
 local leet_arg = "leetcode"
 
@@ -21,7 +25,7 @@ return {
   cmd = "Leet",
   opts = {
     arg = leet_arg,
-    lang = "python3",
+    lang = "php",
     picker = { provider = "telescope" },
     hooks = {
       -- config/layout.lua rebuilds the tree + welcome layout (with `only`) on
@@ -41,15 +45,5 @@ return {
         end,
       },
     },
-  },
-  keys = {
-    { "<leader>Lm", "<cmd>Leet<cr>",        desc = "LeetCode: menu" },
-    { "<leader>Ll", "<cmd>Leet list<cr>",   desc = "LeetCode: list questions" },
-    { "<leader>Ld", "<cmd>Leet daily<cr>",  desc = "LeetCode: daily question" },
-    { "<leader>Lr", "<cmd>Leet run<cr>",    desc = "LeetCode: run tests" },
-    { "<leader>Ls", "<cmd>Leet submit<cr>", desc = "LeetCode: submit" },
-    { "<leader>Lc", "<cmd>Leet console<cr>", desc = "LeetCode: toggle console" },
-    { "<leader>Li", "<cmd>Leet desc<cr>",   desc = "LeetCode: toggle description" },
-    { "<leader>Lg", "<cmd>Leet lang<cr>",   desc = "LeetCode: change language" },
   },
 }

@@ -6,7 +6,10 @@ return {
     require("nvim-treesitter.configs").setup({
       ensure_installed = {
         "lua", "vim", "vimdoc", "bash",
-        "php", "phpdoc",
+        -- php_only is the same grammar entered at the CODE rule instead of at
+        -- the text/HTML rule. Needed for tag-less snippets (LeetCode solutions
+        -- start straight at `class Solution`): see config/php.lua.
+        "php", "php_only", "phpdoc",
         "html", "css", "scss",
         "javascript", "typescript", "tsx",
         "json", "yaml", "toml", "markdown", "markdown_inline",
