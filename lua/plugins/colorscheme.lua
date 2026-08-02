@@ -19,6 +19,9 @@ return {
         number      = "#56B6C2",   -- cyan
         keyword     = "#CC7832",   -- ORANGE bold (unified with types)
         func        = "#61AFEF",   -- BLUE
+        named_arg   = "#6897BB",   -- muted darker blue (Darcula's own), kept
+                                   -- distinct from func so a `limit:` label
+                                   -- never reads as a method name
         variable    = "#C678DD",   -- PURPLE
         type_color  = "#B0B4BA",   -- soft gray (class / type names)
         type_builtin = "#CC7832",  -- ORANGE (scalar type markers: int, bool, string ...)
@@ -81,6 +84,13 @@ return {
       hl(0, "@variable.builtin",     { fg = C.keyword, italic = true })
       hl(0, "@property",             { fg = C.variable })
       hl(0, "@parameter",            { fg = C.variable })
+      -- The label of a NAMED argument -- the `limit:` in `f(limit: 10)`. Blue,
+      -- as in PhpStorm, but a darker blue than methods so the two don't blur
+      -- together at a glance. It gets its own capture (see
+      -- after/queries/php_only/highlights.scm) precisely so this stays surgical:
+      -- the upstream query lumps it in with @variable.parameter, which also
+      -- covers the `$x` in a function signature, and those stay purple.
+      hl(0, "@variable.parameter.named", { fg = C.named_arg })
       hl(0, "@constant",             { fg = C.variable, bold = true })
       hl(0, "@constant.builtin",     { fg = C.keyword, italic = true })
       hl(0, "@type",                 { fg = C.type_color, bold = true })
