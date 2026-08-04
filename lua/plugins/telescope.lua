@@ -11,13 +11,10 @@ return {
     local from_entry = require("telescope.from_entry")
     local putils = require("telescope.previewers.utils")
 
-    -- Telescope's default git_status previewer pipes `git diff` into a buffer
-    -- with filetype=diff, so only the +/-/@@ structure gets colored and the
-    -- underlying PHP stays plain. This previewer instead loads the REAL file
-    -- content with its real filetype -- so treesitter colors the code exactly
-    -- like every other view -- and then marks the changed lines with gutter
-    -- signs (+ = added, ~ = changed; blue) plus a faint line tint, derived
-    -- from `git diff -U0`. Code coloring is never touched, only the gutter.
+    -- git_status previewer: instead of the default ft=diff pipe (structure
+    -- colored, code plain), load the real file with its real filetype so
+    -- treesitter colors it, and overlay change markers from `git diff -U0`
+    -- as gutter signs plus a faint line tint.
     vim.fn.sign_define("TelescopeGsAdd",    { text = "+", texthl = "GitSignsAdd" })
     vim.fn.sign_define("TelescopeGsChange", { text = "~", texthl = "GitSignsChange" })
     vim.fn.sign_define("TelescopeGsDelete", { text = "_", texthl = "GitSignsDelete" })
@@ -38,13 +35,11 @@ return {
           bufname = self.state.bufname,
           callback = function(bnr)
             if not vim.api.nvim_buf_is_valid(bnr) then return end
-            -- Real filetype -> treesitter attaches and colors the code.
             local ft = vim.filetype.match({ filename = path }) or ""
             if ft ~= "" then
               vim.bo[bnr].filetype = ft
               pcall(vim.treesitter.start, bnr, ft)
             end
-            -- Overlay change markers from `git diff -U0` (blue gutter signs).
             -- Run git from the file's own directory so the repo is found
             -- regardless of Telescope's cwd.
             local dir = vim.fn.fnamemodify(path, ":h")
@@ -53,12 +48,9 @@ return {
               { text = true },
               function(res)
                 if not res.stdout then return end
-                -- Parse each hunk header. Format: @@ -old,oldN +new,newN @@
-                -- oldN/newN default to 1 when the ",N" part is absent. The
-                -- +side describes the CURRENT file (what we're previewing):
-                --   newN > 0, oldN == 0  -> pure addition
-                --   newN > 0, oldN > 0   -> changed lines
-                --   newN == 0            -> pure deletion (mark the line above)
+                -- Hunk headers: @@ -old,oldN +new,newN @@ (N defaults to 1).
+                -- The + side describes the current file: oldN==0 -> addition,
+                -- both >0 -> change, newN==0 -> deletion (mark line above).
                 local signs = {}
                 for oldc, newstart, newc in res.stdout:gmatch(
                   "@@ %-%d+,?(%d*) %+(%d+),?(%d*) @@"
@@ -67,7 +59,6 @@ return {
                   local new_s = tonumber(newstart)
                   local new_n = newc == "" and 1 or tonumber(newc)
                   if new_n == 0 then
-                    -- deletion: git reports +N,0 -> lines removed after line N
                     signs[#signs + 1] = { lnum = math.max(new_s, 1), kind = "TelescopeGsDelete" }
                   else
                     local kind = old_n > 0 and "TelescopeGsChange" or "TelescopeGsAdd"
@@ -84,19 +75,15 @@ return {
                   for _, s in ipairs(signs) do
                     pcall(vim.fn.sign_place, 0, "TelescopeGs", s.kind, bnr,
                       { lnum = s.lnum, priority = 100 })
-                    -- In-text change marker: tint the changed line's whole
-                    -- background the same translucent blue as the in-buffer
-                    -- word-diff (GitSignsAddInline = #22384f). Deletes have no
-                    -- line in the current file, so they get no line tint.
+                    -- Line tint matches the in-buffer word-diff blue. Deletes
+                    -- have no line in the current file, so no tint.
                     if s.kind ~= "TelescopeGsDelete" and s.lnum >= 1 and s.lnum <= last then
                       pcall(vim.api.nvim_buf_set_extmark, bnr, gs_hl_ns, s.lnum - 1, 0,
                         { line_hl_group = "GitSignsAddInline" })
                     end
                     if not first or s.lnum < first then first = s.lnum end
                   end
-                  -- Line numbers + scroll so the FIRST change is centered in
-                  -- view (full file + coloring kept, but the change is what
-                  -- you land on -- like the old @@-hunk preview did).
+                  -- Land centered on the first change, numbers + signs on.
                   local win = self.state and self.state.winid
                   if win and vim.api.nvim_win_is_valid(win) then
                     vim.wo[win].number = true
@@ -114,40 +101,27 @@ return {
       end,
     })
 
-    -- Telescope was never given a setup() call, so every picker ran on the
-    -- built-in defaults: layout_strategy="horizontal" sized as a PERCENTAGE of
-    -- the window it's invoked over, and a preview_cutoff of 80 that silently
-    -- drops the preview in narrow windows. Invoked from the blame column or a
-    -- vertical split, that produced a small picker with the buffer still
-    -- visible around it instead of one big window.
-    --
     -- Pin the layout so a picker looks identical no matter which window has
     -- focus when it opens: near-fullscreen, centered, preview always on.
+    -- (The builtin defaults size as a percentage of the CURRENT window and
+    -- drop the preview below 80 columns -- tiny pickers from narrow splits.)
     local full_layout = {
       layout_strategy = "horizontal",
       layout_config = {
-        -- Fractions of the total EDITOR size, not the current window: these
-        -- are what make the picker ignore which split it was opened from.
-        width  = 0.9,
+        width  = 0.9,   -- fractions of the total editor size
         height = 0.9,
-        -- 0 = never fall back to the no-preview layout.
-        preview_cutoff = 0,
-        -- Strategy-specific keys MUST stay nested under their strategy. A
-        -- top-level layout_config key is merged into EVERY strategy, and a
-        -- strategy that doesn't recognise a key hard-errors on it rather than
-        -- ignoring it -- so one stray default breaks other plugins' pickers:
-        --   preview_width   -> rejected by "center" (what themes.get_dropdown
-        --                      uses, e.g. leetcode.nvim's `:Leet lang`)
-        --   prompt_position -> rejected by "cursor"
-        -- Only "horizontal" is our own strategy, so that's the only one to
-        -- configure; themed pickers bring their own values.
+        preview_cutoff = 0,   -- never fall back to the no-preview layout
+        -- Strategy-specific keys MUST stay nested under their strategy: a
+        -- top-level key is merged into EVERY strategy, and strategies
+        -- hard-error on keys they don't recognise (center rejects
+        -- preview_width, cursor rejects prompt_position) -- which breaks
+        -- other plugins' themed pickers, e.g. leetcode's dropdowns.
         horizontal = {
           preview_width = 0.55,
           prompt_position = "bottom",
         },
       },
-      -- "descending" is what pairs with a bottom prompt: best match sits
-      -- closest to where you're typing.
+      -- Pairs with a bottom prompt: best match closest to where you type.
       sorting_strategy = "descending",
     }
 
@@ -159,8 +133,7 @@ return {
       if not entry then return end
       local path = entry.path or entry.filename or entry.value or entry[1]
       if not path then return end
-      -- Tear down the blame column before routing the file in, so the file can
-      -- never land in the (narrow, nofile) blame window.
+      -- Tear down the blame column first so the file can never land in it.
       pcall(function() require("config.blame").close() end)
       local main = win_utils.find_main_window()
       if main then vim.api.nvim_set_current_win(main) end
@@ -197,6 +170,9 @@ return {
       end
     end
 
+    -- Published for lsp.lua's `gr`, so it reuses the same routing.
+    require("config.picker").open_in_main = with_action(open_in_main)
+
     vim.keymap.set("n", "<leader>ff", function()
       builtin.find_files({ attach_mappings = with_action(open_in_main) })
     end, { desc = "Find files" })
@@ -209,36 +185,21 @@ return {
       builtin.grep_string({ attach_mappings = with_action(open_in_main) })
     end, { desc = "Grep word under cursor" })
 
-    -- Buffers picker. The default builtin.buffers is fiddly: depending on the
-    -- picker's own options it can hide the current buffer, hide unnamed/hidden
-    -- ones, and sort by "last used" so the list order jumps around whenever you
-    -- switch files -- which is why with several buffers open it sometimes came
-    -- up empty or missing entries. Pin every knob to a fixed, predictable view:
-    -- always list every real file buffer (never terminals/tree/blame), show the
-    -- current one, and keep a stable order so it looks the same every time.
+    -- Every knob pinned to a fixed, predictable view: all real file buffers,
+    -- current one included, stable order (the defaults hide/sort-by-MRU,
+    -- which made the list jump around or come up missing entries).
     vim.keymap.set("n", "<leader>fb", function()
       builtin.buffers({
         attach_mappings = with_action(open_in_main),
-        show_all_buffers = true,   -- include hidden (not-yet-displayed) buffers
+        show_all_buffers = true,
         ignore_current_buffer = false,
-        sort_mru = false,          -- stable order, not "most recently used"
+        sort_mru = false,
         sort_lastused = false,
         only_cwd = false,
       })
     end, { desc = "Buffers" })
 
     vim.keymap.set("n", "<leader>fh", builtin.help_tags, { desc = "Help tags" })
-
-    vim.keymap.set("n", "<leader>gs", function()
-      builtin.git_status({
-        previewer = git_status_previewer,
-        attach_mappings = with_action(open_in_main),
-      })
-    end, { desc = "Git changed files" })
-
-    -- Published so lsp.lua's `gr` can reuse the same "open in the main window"
-    -- routing as the pickers above instead of duplicating the window logic.
-    require("config.picker").open_in_main = with_action(open_in_main)
 
     vim.keymap.set("n", "<leader>fd", function()
       builtin.find_files({
@@ -247,5 +208,12 @@ return {
         attach_mappings = with_action(reveal_dir),
       })
     end, { desc = "Find directories" })
+
+    vim.keymap.set("n", "<leader>gs", function()
+      builtin.git_status({
+        previewer = git_status_previewer,
+        attach_mappings = with_action(open_in_main),
+      })
+    end, { desc = "Git changed files" })
   end,
 }

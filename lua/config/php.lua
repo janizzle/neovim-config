@@ -1,43 +1,27 @@
--- Local PHP execution, aimed at LeetCode grinding: run the solution you are
--- writing through the `php` CLI and read the output in a split, without a
--- round-trip to leetcode.com.
+-- PHP helpers for LeetCode grinding: make the plugin's tag-less snippets
+-- behave like normal PHP files, and run solutions locally through the `php`
+-- CLI (:PhpRun / :PhpDriver / :PhpRepl) without a round-trip to leetcode.com.
 --
--- Why this works with leetcode.nvim: it only ever submits the lines BETWEEN
--- `// @leet start` and `// @leet end`. Anything after the end marker is local
--- scaffolding -- it runs here and is never sent to LeetCode. So the workflow is
---
---     // @leet start
---     class Solution { function twoSum($nums, $target) { ... } }
---     // @leet end
---
---     $s = new Solution();          <- :PhpDriver writes this stub for you
---     print_r($s->twoSum([2,7,11,15], 9));
---
--- and :PhpRun prints the array. :PhpRepl opens a plain `php -a` shell for
--- one-off scratch expressions.
+-- Local runs compose with leetcode.nvim because :Leet submit only sends the
+-- lines BETWEEN `// @leet start` and `// @leet end`; anything outside the
+-- markers (the injected `<?php`, the :PhpDriver stub) stays local.
 
 local M = {}
 
 local TIMEOUT_MS = 10000
-
--- ---------------------------------------------------------------------------
--- Highlighting for tag-less PHP
---
--- LeetCode's snippets open straight at `class Solution` with no `<?php`. The
--- tree-sitter `php` grammar starts in text/HTML mode and only enters code at an
--- opening tag, so a tag-less buffer parses as ONE big text node: zero highlight
--- captures, and the file renders uncolored. `php_only` is the same grammar
--- entered at the code rule; point the highlighter at it when there's no tag.
--- The colours themselves already come from the palette in plugins/colorscheme.lua
--- -- php_only's queries use the standard @keyword / @function / @variable
--- captures that file already maps.
--- ---------------------------------------------------------------------------
-
 local SCAN_LINES = 200
 
---- True when the buffer looks like bare PHP code with no `<?php` / `<?=` tag.
---- Bails on anything that opens with markup -- that's a template whose leading
---- HTML the normal `php` parser handles correctly.
+-- ---------------------------------------------------------------------------
+-- `<?php` injection. LeetCode snippets open straight at `// @leet start` with
+-- no tag, and the tree-sitter php grammar only enters code mode at an opening
+-- tag -- a tag-less buffer parses as one big text node: no highlighting, and
+-- an indentexpr that answers 0 (every <CR> lands at column 0). Inserting
+-- `<?php` as line 1 makes it a normal PHP file and fixes both at once.
+-- ---------------------------------------------------------------------------
+
+--- True when the buffer looks like bare PHP with no `<?php` / `<?=` tag.
+--- Bails on anything that opens with markup (a template's leading HTML is
+--- handled correctly by the php parser as-is).
 --- @param buf integer
 local function tagless_php(buf)
   local lines = vim.api.nvim_buf_get_lines(buf, 0, SCAN_LINES, false)
@@ -52,35 +36,39 @@ local function tagless_php(buf)
   return saw_code
 end
 
---- Swap a tag-less PHP buffer onto the php_only highlighter. Idempotent.
+--- Insert `<?php` as line 1 of a tag-less LeetCode solution buffer.
+--- Idempotent: once the tag is there, tagless_php() says no next time.
 --- @param buf integer
-local function use_php_only(buf)
+local function inject_php_tag(buf)
   if not vim.api.nvim_buf_is_valid(buf) then return end
   if vim.bo[buf].filetype ~= "php" then return end
-  if vim.b[buf].php_only_hl then return end
   if not tagless_php(buf) then return end
-  -- Not installed yet (fresh machine, :TSUpdate still running) -> leave the
-  -- buffer on the default parser rather than tearing its highlighter down.
-  if not pcall(vim.treesitter.language.add, "php_only") then return end
 
-  pcall(vim.treesitter.stop, buf)
-  if pcall(vim.treesitter.start, buf, "php_only") then
-    vim.b[buf].php_only_hl = true
+  -- Only leetcode solutions -- a random tag-less .php buffer isn't ours to edit.
+  local leet = false
+  for _, line in ipairs(vim.api.nvim_buf_get_lines(buf, 0, SCAN_LINES, false)) do
+    if line:find("@leet start", 1, true) then leet = true break end
   end
+  if not leet then return end
+
+  vim.api.nvim_buf_set_lines(buf, 0, 0, false, { "<?php" })
 end
 
 -- FileType alone isn't enough for leetcode.nvim: it fills the question buffer
--- after the event fires, so the scan above would run against an empty buffer.
--- BufWinEnter catches it once the content is really there; the b: guard keeps
--- the repeat visits free.
+-- after that event fires, so the scan would run against an empty buffer.
+-- BufWinEnter catches it once the content is really there.
 vim.api.nvim_create_autocmd("FileType", {
   pattern = "php",
-  callback = function(ev) vim.schedule(function() use_php_only(ev.buf) end) end,
+  callback = function(ev) vim.schedule(function() inject_php_tag(ev.buf) end) end,
 })
 vim.api.nvim_create_autocmd("BufWinEnter", {
   pattern = "*.php",
-  callback = function(ev) vim.schedule(function() use_php_only(ev.buf) end) end,
+  callback = function(ev) vim.schedule(function() inject_php_tag(ev.buf) end) end,
 })
+
+-- ---------------------------------------------------------------------------
+-- Local execution
+-- ---------------------------------------------------------------------------
 
 --- The output pane's scratch buffer, created on first use and reused after.
 local function output_buf()
@@ -95,26 +83,23 @@ local function output_buf()
   vim.bo[buf].swapfile = false
   vim.bo[buf].buflisted = false
   vim.b[buf].php_output = true
-  -- Buffer-local close keys. <leader>q / <leader>x are shadowed on purpose:
-  -- the global ones (config/keymaps.lua smart_close) DELETE the buffer and
-  -- swap another one into the window, which would leave the split sitting
-  -- there showing a random file. Here the window itself should go away.
+  -- <leader>q / <leader>x shadowed on purpose: the global smart_close would
+  -- swap another buffer into the split; here the window itself should go.
   for _, lhs in ipairs({ "q", "ZZ", "<leader>q", "<leader>x" }) do
     vim.keymap.set("n", lhs, "<cmd>close<cr>", { buffer = buf, desc = "Close PHP output" })
   end
   return buf
 end
 
---- Write `lines` into the output pane, opening it below the editor if it isn't
---- already on screen. Focus stays where it was -- you keep typing in the code.
+--- Show `lines` in the output pane below the editor and focus it (close with
+--- q / ZZ / <leader>q without a window hop).
 --- @param lines string[]
 local function show(lines)
   local buf = output_buf()
   vim.bo[buf].modifiable = true
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modifiable = false
-  -- Leave it unmodified so ZZ (:x) closes the window instead of failing with
-  -- E382 "Cannot write, 'buftype' option is set".
+  -- Unmodified so ZZ closes the window instead of failing with E382.
   vim.bo[buf].modified = false
 
   local win
@@ -132,21 +117,16 @@ local function show(lines)
     vim.wo[win].number = false
     vim.wo[win].relativenumber = false
     vim.wo[win].winfixheight = true
-    vim.wo[win].colorcolumn = ""      -- no line-length rule in output
+    vim.wo[win].colorcolumn = ""
   end
-  -- Focus the pane: you read the result, then close it with q / ZZ /
-  -- <leader>q without a window hop first.
   vim.api.nvim_set_current_win(win)
   pcall(vim.api.nvim_win_set_cursor, win, { 1, 0 })
 end
 
---- Buffer contents as a standalone runnable script. LeetCode's PHP snippets
---- start straight at `class Solution` with no opening tag, so add one.
----
---- The tag is spliced onto the FRONT of the first non-blank line rather than
---- inserted as a line of its own: that keeps the temp file line-for-line
---- identical to the buffer, so line numbers in a PHP stack trace point at the
---- line you are actually looking at.
+--- Buffer contents as a standalone runnable script. If the buffer somehow has
+--- no `<?php`, splice one onto the FRONT of the first non-blank line -- not a
+--- line of its own -- so the temp file stays line-for-line identical to the
+--- buffer and PHP stack-trace line numbers match what you're looking at.
 --- @param buf integer
 --- @return string[]
 local function source(buf)
@@ -183,21 +163,18 @@ function M.run()
   local name = vim.fn.expand("%:t")
   if name == "" then name = "buffer" end
 
-  -- log_errors=0: the CLI otherwise reports every fatal TWICE, once via
-  -- display_errors (stdout) and once via the error log (stderr).
-  -- :wait(TIMEOUT_MS) kills the process if it overruns, so an accidental
-  -- infinite loop in a solution can't wedge the editor.
+  -- log_errors=0: the CLI otherwise reports every fatal twice (display_errors
+  -- + error log). :wait() kills overruns so an infinite loop can't wedge nvim.
   local res = vim.system({ "php", "-d", "log_errors=0", tmp }, { text = true }):wait(TIMEOUT_MS)
   vim.fn.delete(tmp)
 
   local out = { ("── php %s · exit %d ──"):format(name, res.code) }
   for _, chunk in ipairs({ res.stdout, res.stderr }) do
     if chunk and chunk ~= "" then
-      -- Stack traces name the temp file; show the buffer's name instead so the
-      -- "in <file> on line N" reads against the file you're editing. The
-      -- /private form goes first: on macOS tempname() hands back /var/... but
-      -- PHP reports the resolved /private/var/..., and replacing the short
-      -- form first would leave a stray "/private" glued to the name.
+      -- Rewrite the temp path in stack traces to the buffer's name. /private
+      -- form first: macOS tempname() returns /var/... but PHP reports the
+      -- resolved /private/var/..., and replacing the short form first would
+      -- leave a stray "/private" glued to the name.
       chunk = chunk:gsub(vim.pesc("/private" .. tmp), name):gsub(vim.pesc(tmp), name)
       chunk = chunk:gsub("%s+$", "")
       vim.list_extend(out, vim.split(chunk, "\n", { plain = true }))
@@ -212,8 +189,8 @@ function M.run()
   show(out)
 end
 
---- Append a driver stub after `// @leet end`, pre-filled with the first public
---- method found in the buffer so it is one edit away from runnable.
+--- Append a driver stub after the solution, pre-filled with the first public
+--- method found so it is one edit away from runnable.
 function M.driver()
   if vim.bo.filetype ~= "php" then
     vim.notify("PhpDriver: current buffer is not PHP", vim.log.levels.WARN)

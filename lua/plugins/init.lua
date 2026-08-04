@@ -1,27 +1,31 @@
 -- Aggregates every plugin spec in this directory into one list for lazy.
--- Required explicitly by init.lua (rather than lazy's `import = "plugins"`)
--- because lazy rebuilds the runtimepath at setup and drops the .nvim-fix dir
--- we prepend, so an rtp-based import can't find these files -- but our
--- package.path entry still resolves `require("plugins.<name>")` fine.
+-- Required explicitly by init.lua (not lazy's `import = "plugins"`): lazy
+-- rebuilds the rtp at setup and would drop a prepended config dir, while
+-- package.path still resolves these requires.
 
 local specs = {}
 for _, name in ipairs({
+  -- appearance
   "colorscheme",
   "devicons",
+  "bufferline",
+  "lualine",
+  "virt-column",
   "showkeys",
+  -- languages & editing
   "treesitter",
   "twig",
   "lsp",
   "lint",
+  -- navigation
   "nvim-tree",
-  "bufferline",
-  "lualine",
   "telescope",
+  -- git
   "gitsigns",
   "blame",
   "diffview",
   "git-conflict",
-  "virt-column",
+  -- extras
   "vim-be-good",
   "leetcode",
 }) do

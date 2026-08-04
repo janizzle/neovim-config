@@ -1,6 +1,5 @@
--- Startup layout: open the file tree on the left, paint the welcome screen in
--- the main window, and keep that layout intact (reopen the tree if it's the
--- last window, restore on demand with <leader>l / :Layout).
+-- Startup layout: file tree on the left, welcome screen in the main window,
+-- kept intact by autocmds; restore on demand with <leader>l / :Layout.
 
 local state = require("config.state")
 local welcome = require("welcome")
@@ -22,9 +21,8 @@ local function ensure_normal_buffer()
   vim.cmd("enew")
 end
 
--- force = true (the :Layout command / <leader>l) rebuilds unconditionally and
--- is therefore also the way out of a leetcode session; the automatic triggers
--- below leave a leetcode layout alone.
+-- force = true (:Layout / <leader>l) rebuilds unconditionally and is the way
+-- out of a leetcode session; the automatic triggers leave leetcode alone.
 local function setup_layout(force)
   if state.building then return end
   if state.leetcode then
@@ -41,19 +39,13 @@ local function setup_layout(force)
   if vim.api.nvim_win_is_valid(main_win) then
     vim.api.nvim_set_current_win(main_win)
   end
-
-  if vim.api.nvim_win_is_valid(main_win) then
-    vim.api.nvim_set_current_win(main_win)
-  end
   pcall(welcome.paint, main_buf)
   state.building = false
 end
 
--- Diffview (and any plain :diffsplit) builds its own multi-window tabpage that
--- has no file tree in it. Without this check layout_intact() reports "broken",
--- and setup_layout()'s `only` closes the diff windows the moment the
--- working-tree buffer is entered -- which looks like <leader>dv opening and
--- instantly closing again.
+-- Diffview (and :diffsplit) builds a tree-less multi-window tabpage; without
+-- this check the BufEnter autocmd below would see "layout broken" and its
+-- `only` would close the diff windows the moment a file buffer is entered.
 local function diff_tabpage()
   for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
     local ft = vim.bo[vim.api.nvim_win_get_buf(win)].filetype
@@ -65,12 +57,12 @@ local function diff_tabpage()
 end
 
 local function layout_intact()
-  local has_tree = false
   for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-    local buf = vim.api.nvim_win_get_buf(win)
-    if vim.bo[buf].filetype == "NvimTree" then has_tree = true end
+    if vim.bo[vim.api.nvim_win_get_buf(win)].filetype == "NvimTree" then
+      return true
+    end
   end
-  return has_tree
+  return false
 end
 
 vim.api.nvim_create_user_command("Layout", function() setup_layout(true) end, {})
@@ -91,10 +83,11 @@ vim.api.nvim_create_autocmd("BufEnter", {
 vim.api.nvim_create_autocmd("TermOpen", {
   callback = function()
     vim.bo.buflisted = false
-    vim.wo.colorcolumn = ""   -- no line-length rule in terminals
+    vim.wo.colorcolumn = ""
   end,
 })
 
+-- Tree left as the last window -> rebuild instead of an all-tree screen.
 vim.api.nvim_create_autocmd("WinClosed", {
   callback = function()
     if state.building then return end

@@ -14,17 +14,15 @@ return {
         fg          = "#A9B7C6",
         cursorline  = "#323232",
         line_nr     = "#606366",
-        comment     = "#629755",   -- green italic (doc-comment shade)
-        string      = "#6A8759",   -- string green (PhpStorm's exact shade)
+        comment     = "#629755",   -- green italic
+        string      = "#6A8759",
         number      = "#56B6C2",   -- cyan
-        keyword     = "#CC7832",   -- ORANGE bold (unified with types)
-        func        = "#61AFEF",   -- BLUE
-        named_arg   = "#6897BB",   -- muted darker blue (Darcula's own), kept
-                                   -- distinct from func so a `limit:` label
-                                   -- never reads as a method name
-        variable    = "#C678DD",   -- PURPLE
+        keyword     = "#CC7832",   -- orange bold
+        func        = "#61AFEF",   -- blue
+        named_arg   = "#6897BB",   -- darker blue, distinct from func
+        variable    = "#C678DD",   -- purple
         type_color  = "#B0B4BA",   -- soft gray (class / type names)
-        type_builtin = "#CC7832",  -- ORANGE (scalar type markers: int, bool, string ...)
+        type_builtin = "#CC7832",  -- orange (int, bool, string, ...)
         tag         = "#E8BF6A",
         attribute   = "#BABABA",
         annotation  = "#BBB529",
@@ -32,9 +30,8 @@ return {
       }
 
       hl(0, "Normal",         { fg = C.fg, bg = C.bg })
-      -- Floats (LSP hover, diagnostics) use the same background as the buffer
-      -- so the K popup doesn't read as a different-colored panel. The blue
-      -- FloatBorder still delimits it.
+      -- Same bg as the buffer so the K popup doesn't read as a separate
+      -- panel; the blue FloatBorder still delimits it.
       hl(0, "NormalFloat",    { fg = C.fg, bg = C.bg })
       hl(0, "CursorLine",     { bg = C.cursorline })
       hl(0, "VirtColumn",     { fg = C.colorcol })
@@ -84,12 +81,9 @@ return {
       hl(0, "@variable.builtin",     { fg = C.keyword, italic = true })
       hl(0, "@property",             { fg = C.variable })
       hl(0, "@parameter",            { fg = C.variable })
-      -- The label of a NAMED argument -- the `limit:` in `f(limit: 10)`. Blue,
-      -- as in PhpStorm, but a darker blue than methods so the two don't blur
-      -- together at a glance. It gets its own capture (see
-      -- after/queries/php_only/highlights.scm) precisely so this stays surgical:
-      -- the upstream query lumps it in with @variable.parameter, which also
-      -- covers the `$x` in a function signature, and those stay purple.
+      -- The `limit:` label in `f(limit: 10)`. Custom capture from
+      -- after/queries/php_only/highlights.scm; upstream lumps it in with
+      -- @variable.parameter, which also covers signature params (purple).
       hl(0, "@variable.parameter.named", { fg = C.named_arg })
       hl(0, "@constant",             { fg = C.variable, bold = true })
       hl(0, "@constant.builtin",     { fg = C.keyword, italic = true })
@@ -150,21 +144,21 @@ return {
       hl(0, "@lsp.type.enumMember",  { fg = C.variable, bold = true })
 
       -- Twig ({{ }} / {% %}) -- vim-twig regex groups mapped to the palette.
-      hl(0, "twigVarDelim",     { fg = C.keyword, bold = true })   -- {{  }}
-      hl(0, "twigTagDelim",     { fg = C.keyword, bold = true })   -- {%  %}
-      hl(0, "twigVarBlock",     { fg = C.fg })                     -- default inside {{ }}
-      hl(0, "twigTagBlock",     { fg = C.fg })                     -- default inside {% %}
-      hl(0, "twigStatement",    { fg = C.keyword, bold = true })   -- if / for / block / set ...
-      hl(0, "twigSpecial",      { fg = C.keyword, italic = true }) -- true / false / none / loop
-      hl(0, "twigOperator",     { fg = C.fg })                     -- | . + - == ...
-      hl(0, "twigFilter",       { fg = C.func })                   -- |upper, |date ...
-      hl(0, "twigFunction",     { fg = C.func })                   -- path(), asset() ...
+      hl(0, "twigVarDelim",     { fg = C.keyword, bold = true })
+      hl(0, "twigTagDelim",     { fg = C.keyword, bold = true })
+      hl(0, "twigVarBlock",     { fg = C.fg })
+      hl(0, "twigTagBlock",     { fg = C.fg })
+      hl(0, "twigStatement",    { fg = C.keyword, bold = true })
+      hl(0, "twigSpecial",      { fg = C.keyword, italic = true })
+      hl(0, "twigOperator",     { fg = C.fg })
+      hl(0, "twigFilter",       { fg = C.func })
+      hl(0, "twigFunction",     { fg = C.func })
       hl(0, "twigBlockName",    { fg = C.func })
       hl(0, "twigVariable",     { fg = C.variable })
-      hl(0, "twigAttribute",    { fg = C.variable })               -- .name in user.name
+      hl(0, "twigAttribute",    { fg = C.variable })
       hl(0, "twigString",       { fg = C.string })
       hl(0, "twigNumber",       { fg = C.number })
-      hl(0, "twigComment",      { fg = C.comment, italic = true }) -- {# ... #}
+      hl(0, "twigComment",      { fg = C.comment, italic = true })
       hl(0, "twigCommentDelim", { fg = C.comment, italic = true })
       hl(0, "twigRawDelim",     { fg = C.keyword, bold = true })
     end

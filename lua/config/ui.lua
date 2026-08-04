@@ -1,8 +1,7 @@
--- UI chrome recoloring that isn't tied to a single plugin's config: the diff
--- backgrounds and the global blue+magenta accent scheme. Both are reapplied on
--- ColorScheme so they survive theme reloads.
+-- UI chrome recoloring not tied to a single plugin: diff backgrounds and the
+-- blue+magenta accent scheme. Reapplied on ColorScheme to survive reloads.
 
--- Nicer, less washed-out diff colors (darcula's DiffChange is a muddy grey and
+-- Less washed-out diff colors (darcula's DiffChange is a muddy grey and
 -- DiffDelete has no background).
 local function improve_diff_colors()
   vim.api.nvim_set_hl(0, "DiffAdd",    { bg = "#20402a", fg = "NONE" })  -- added / OURS side
@@ -13,21 +12,16 @@ end
 improve_diff_colors()
 vim.api.nvim_create_autocmd("ColorScheme", { callback = improve_diff_colors })
 
--- Recolor the neovim UI chrome to a blue + magenta accent scheme. This ONLY
--- touches interface elements (borders, selections, statusline/bufferline
--- accents, popup-menu selection, matched brackets, search, conflict regions):
--- window backgrounds, icon colors, code syntax coloring and the diff-view
--- backgrounds are deliberately left untouched. Backgrounds are kept transparent
--- (NONE) or a faint tint so code underneath stays readable.
+-- Blue + magenta accents on interface elements only (borders, selections,
+-- search, menus, conflict regions); window backgrounds, icon colors and code
+-- syntax are deliberately untouched, backgrounds stay transparent or a faint
+-- tint so code underneath remains readable.
 local function improve_ui_colors()
   local hl   = vim.api.nvim_set_hl
   local blue = "#61AFEF"
   local mag  = "#c264c9"
-  -- Same purple the palette uses for variables/identifiers, reused here so the
-  -- cursor line number reads as part of the existing accent set.
-  local purple = "#C678DD"
-  -- faint tints (used only where a background genuinely helps legibility)
-  local blue_bg = "#22384f"
+  local purple = "#C678DD"     -- same purple the palette uses for variables
+  local blue_bg = "#22384f"    -- faint tints
   local mag_bg  = "#3a2740"
 
   -- Selection / search / cursor accents.
@@ -38,19 +32,17 @@ local function improve_ui_colors()
   hl(0, "CurSearch",     { fg = "#2B2B2B", bg = mag, bold = true })
   hl(0, "MatchParen",    { fg = mag, bold = true, bg = "NONE" })
 
-  -- Floating-window borders (window separators / VertSplit left at the theme
-  -- default so the window divide line keeps its original color).
+  -- Floating-window borders (VertSplit left at the theme default).
   hl(0, "FloatBorder",   { fg = blue, bg = "NONE" })
   hl(0, "FloatTitle",    { fg = mag, bold = true, bg = "NONE" })
 
-  -- Popup / completion menu: transparent rows, blue selection, magenta scrollbar.
+  -- Popup / completion menu.
   hl(0, "Pmenu",         { fg = "#A9B7C6", bg = "#3C3F41" })
   hl(0, "PmenuSel",      { fg = "#2B2B2B", bg = blue, bold = true })
   hl(0, "PmenuSbar",     { bg = "#3C3F41" })
   hl(0, "PmenuThumb",    { bg = mag })
 
-  -- Line-number gutter: purple accent on the cursor's own line, sign column
-  -- transparent.
+  -- Gutter.
   hl(0, "CursorLineNr",  { fg = purple, bold = true })
   hl(0, "SignColumn",    { bg = "NONE" })
 
@@ -60,8 +52,7 @@ local function improve_ui_colors()
   hl(0, "ModeMsg",       { fg = mag, bold = true })
   hl(0, "Title",         { fg = mag, bold = true })
 
-  -- Merge-conflict regions (git-conflict.nvim). Transparent-ish tints only,
-  -- so the conflicting code stays fully readable. ours = blue, theirs = magenta.
+  -- Merge-conflict regions (git-conflict.nvim): ours = blue, theirs = magenta.
   hl(0, "GitConflictCurrent",        { bg = blue_bg })
   hl(0, "GitConflictIncoming",       { bg = mag_bg })
   hl(0, "GitConflictCurrentLabel",   { fg = "#2B2B2B", bg = blue, bold = true })
@@ -69,13 +60,9 @@ local function improve_ui_colors()
   hl(0, "GitConflictAncestor",       { bg = "#333333" })
   hl(0, "GitConflictAncestorLabel",  { fg = "#2B2B2B", bg = "#888888", bold = true })
 
-  -- Telescope git_status (<leader>gs) diff PREVIEW. Its added/deleted lines are
-  -- colored by the built-in `diff` filetype groups (diffAdded/diffRemoved) plus
-  -- the treesitter @diff.* groups -- that's why the preview showed solid
-  -- green/red instead of the normal code coloring you see elsewhere (new files
-  -- avoid this because their preview is shown with the real filetype, not as a
-  -- unified diff). Strip the green/red block: keep normal foreground and mark
-  -- the change only with a subtle side tint (blue = added, red = removed).
+  -- Unified-diff previews (<leader>gs on files whose preview is a diff): the
+  -- diff/@diff groups would paint solid green/red blocks over the code; keep
+  -- normal foreground and mark changes with a subtle background tint instead.
   hl(0, "diffAdded",     { fg = "NONE", bg = blue_bg })
   hl(0, "diffRemoved",   { fg = "NONE", bg = "#4a2530" })
   hl(0, "diffChanged",   { fg = "NONE", bg = blue_bg })
@@ -86,7 +73,7 @@ local function improve_ui_colors()
   hl(0, "@diff.minus",   { fg = "NONE", bg = "#4a2530" })
   hl(0, "@diff.delta",   { fg = "NONE", bg = blue_bg })
 
-  -- Telescope picker chrome: blue selection & prompt, magenta match highlight.
+  -- Telescope chrome: blue selection & borders, magenta match highlight.
   hl(0, "TelescopeSelection",     { fg = "#A9B7C6", bg = blue_bg, bold = true })
   hl(0, "TelescopeMatching",      { fg = mag, bold = true })
   hl(0, "TelescopePromptPrefix",  { fg = blue })
@@ -94,17 +81,13 @@ local function improve_ui_colors()
   hl(0, "TelescopePromptBorder",  { fg = blue, bg = "NONE" })
   hl(0, "TelescopeResultsBorder", { fg = blue, bg = "NONE" })
   hl(0, "TelescopePreviewBorder", { fg = blue, bg = "NONE" })
-  -- The per-window title-text groups (not TelescopeTitle -- that one isn't the
-  -- group the borders actually use). Telescope stamps these on the title drawn
-  -- into each window's border; left unstyled they resolve to an empty highlight
-  -- and the title text renders invisibly against the border, which is why the
-  -- "Results" label on the results/prompt divider looked like an empty slot.
+  -- The border-title groups (not TelescopeTitle); unstyled they resolve empty
+  -- and the "Results"/"Prompt" labels render invisibly.
   hl(0, "TelescopeResultsTitle",  { fg = mag, bold = true })
   hl(0, "TelescopePromptTitle",   { fg = mag, bold = true })
   hl(0, "TelescopePreviewTitle",  { fg = mag, bold = true })
 
-  -- nvim-tree: files with a git status (what <leader>gs lists) and the folders
-  -- containing them, name-tinted only. git-ignored is left out.
+  -- nvim-tree: files with a git status (and their folders), name-tinted only.
   for _, kind in ipairs({ "Dirty", "Staged", "New", "Renamed", "Deleted", "Merge" }) do
     hl(0, "NvimTreeGitFile" .. kind .. "HL",   { fg = purple })
     hl(0, "NvimTreeGitFolder" .. kind .. "HL", { fg = purple })

@@ -1,14 +1,12 @@
--- Start screen painted into the empty scratch buffer on launch.
--- Split out of init.lua; wired up via require("welcome").paint(buf).
+-- Start screen painted into the empty scratch buffer on launch
+-- (wired up by config/layout.lua via require("welcome").paint(buf)).
 
 local M = {}
 
 local lines = {
   "",
   "",
-  -- Vim's own mark: the V and the "im" strokes in solid blocks, sitting on the
-  -- shaded diamond. As in the original artwork the diamond is a backdrop rather
-  -- than a container -- the V's flags and the tail of the m overhang it.
+  -- Vim's mark: V + "im" strokes on the shaded diamond backdrop.
   "                                              ░",
   "                                            ░░░░░",
   "                              ██████    ██████░░░░░",
@@ -108,10 +106,9 @@ function M.paint(buf)
 
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.bo[buf].modified = false
-  -- Read by bufferline's name_formatter and lualine's filename component to
-  -- label this buffer "Welcome" instead of "[No Name]". Deliberately a buffer
-  -- variable rather than a real :file name -- naming the buffer would make
-  -- <leader>x / :update try to write a file called "Welcome" into the cwd.
+  -- Read by bufferline/lualine to label this buffer "Welcome". A buffer
+  -- variable, not a :file name -- a real name would make :update try to
+  -- write a file called "Welcome" into the cwd.
   vim.b[buf].welcome_screen = true
   vim.api.nvim_create_autocmd("InsertEnter", {
     buffer = buf,
@@ -119,7 +116,7 @@ function M.paint(buf)
     callback = function()
       vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "" })
       vim.bo[buf].modified = false
-      vim.b[buf].welcome_screen = nil   -- it's a scratch buffer again
+      vim.b[buf].welcome_screen = nil
     end,
   })
 end

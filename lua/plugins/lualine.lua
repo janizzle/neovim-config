@@ -2,11 +2,8 @@ return {
   "nvim-lualine/lualine.nvim",
   dependencies = "nvim-tree/nvim-web-devicons",
   config = function()
-    -- Total lines in the buffer, so the right end of the statusline reads
-    -- "42%  340 lines  12:5" -- where the cursor is, and how much there is.
-    -- Only used in `sections` (the ACTIVE window): a lualine component has no
-    -- handle on the window it is being drawn for, so in `inactive_sections`
-    -- this would report the current buffer's count for every other split.
+    -- Active window only: a component can't tell which window it draws for,
+    -- so in inactive_sections this would show the current buffer's count.
     local function total_lines()
       return vim.api.nvim_buf_line_count(0) .. " lines"
     end
@@ -16,9 +13,8 @@ return {
       sections = {
         lualine_a = { "mode" },
         lualine_b = { "branch", "diff", "diagnostics" },
-        -- `fmt` post-processes the rendered string, so the modified/readonly
-        -- flags keep working -- it only relabels the start screen's scratch
-        -- buffer, which would otherwise show as "[No Name]".
+        -- fmt relabels only the start screen ("[No Name]" -> "Welcome");
+        -- modified/readonly flags keep working.
         lualine_c = {
           { "filename", fmt = function(str) return vim.b.welcome_screen and "Welcome" or str end },
         },

@@ -1,7 +1,7 @@
 return {
-  -- Twig template highlighting: detects *.twig / *.html.twig, sets the
-  -- filetype to html.twig, and layers Twig ({{ }} / {% %} / filters) on
-  -- top of the built-in HTML syntax -- same idea as PhpStorm's HTML+Twig.
+  -- Twig templates: detects *.twig / *.html.twig as ft=html.twig and layers
+  -- {{ }} / {% %} regex syntax on top of HTML, like PhpStorm's HTML+Twig.
+  -- (Its broken indent script is replaced by after/indent/twig.lua.)
   "lumiliet/vim-twig",
   lazy = false,
 }

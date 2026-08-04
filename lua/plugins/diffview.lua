@@ -6,20 +6,15 @@ return {
   config = function()
     require("diffview").setup({ enhanced_diff_hl = true })
 
-    -- Syntax coloring in the diff panels. A NEW file's diff buffer already
-    -- gets a filetype (nvim reads its extension), so treesitter attaches and
-    -- it's colored. An EXISTING file's "before" side is loaded straight from
-    -- a git object (a buffer with no on-disk name), so nvim never detects a
-    -- filetype -- treesitter can't attach and only the diff background shows,
-    -- no syntax. Copy the filetype from the real ("after") side onto every
-    -- diff window in the view and (re)start treesitter there, so modified
-    -- files are colored exactly like new ones.
+    -- The "before" side of an existing file loads from a git object (no
+    -- on-disk name), so no filetype is detected and treesitter never
+    -- attaches -- plain text on a diff background. Copy the filetype from
+    -- the real side onto every diff window and start treesitter there.
     local function color_diff_buffers()
       local wins = vim.api.nvim_tabpage_list_wins(0)
       local ft
       for _, win in ipairs(wins) do
-        local buf = vim.api.nvim_win_get_buf(win)
-        local f = vim.bo[buf].filetype
+        local f = vim.bo[vim.api.nvim_win_get_buf(win)].filetype
         if f ~= "" and f ~= "DiffviewFiles" and f ~= "DiffviewFileHistory" then
           ft = f
           break

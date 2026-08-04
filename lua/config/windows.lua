@@ -2,9 +2,8 @@
 
 local M = {}
 
---- The main editing window: the first window in the current tabpage whose
---- buffer is neither the file tree nor a terminal. Used to route opened files
---- into the editor pane instead of into the tree/terminal split.
+--- First window in the tabpage that is neither the file tree, the blame
+--- column nor a terminal -- where opened files should land.
 --- @return integer|nil window handle
 function M.find_main_window()
   for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do

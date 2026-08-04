@@ -6,10 +6,7 @@ return {
     require("nvim-treesitter.configs").setup({
       ensure_installed = {
         "lua", "vim", "vimdoc", "bash",
-        -- php_only is the same grammar entered at the CODE rule instead of at
-        -- the text/HTML rule. Needed for tag-less snippets (LeetCode solutions
-        -- start straight at `class Solution`): see config/php.lua.
-        "php", "php_only", "phpdoc",
+        "php", "phpdoc",
         "html", "css", "scss",
         "javascript", "typescript", "tsx",
         "json", "yaml", "toml", "markdown", "markdown_inline",
@@ -17,33 +14,35 @@ return {
       highlight = {
         enable = true,
         additional_vim_regex_highlighting = false,
-        -- Twig files (ft=html.twig) are driven by the vim-twig regex syntax
-        -- (html + twig) instead of the html treesitter parser, so the
-        -- {{ }} / {% %} internals actually get colored.
+        -- Twig (ft=html.twig) stays on vim-twig's regex syntax so the
+        -- {{ }} / {% %} internals get colored; the html parser would win
+        -- otherwise and leave them plain.
         disable = function(_, buf)
           return vim.bo[buf].filetype == "html.twig"
         end,
       },
-      indent = { enable = true },
+      -- The pinned master-branch indent queries misfire on nvim 0.12 for
+      -- javascript (indentexpr returns 0 -> every <CR> lands at column 0;
+      -- typescript/tsx share the query family) and for html driving Twig
+      -- (wrong levels). Disabled there so the runtime indent scripts take
+      -- over (GetJavascriptIndent / HtmlIndent + after/indent/twig.lua).
+      -- php treesitter indent works and stays on.
+      indent = {
+        enable = true,
+        disable = function(lang, buf)
+          local broken = { javascript = true, typescript = true, tsx = true, html = true }
+          return broken[lang] or vim.bo[buf].filetype == "html.twig"
+        end,
+      },
     })
 
-    -- nvim 0.12 changed treesitter so a query match capture is a LIST of
-    -- nodes (TSNode[]), not a single TSNode. This nvim-treesitter (master,
-    -- Mar 2026) still passes match[id] straight to get_node_text(), which
-    -- calls node:range() -- a list has no :range(), so it throws
-    -- "attempt to call method 'range' (a nil value)". It fires on markdown
-    -- fenced-code injections, i.e. every LSP hover float (K), which then
-    -- tears down the highlighter and the buffer loses coloring. Re-register
-    -- the two info-string directives to normalize the capture to one node.
+    -- nvim 0.12 made a query match capture a LIST of nodes (TSNode[]); this
+    -- pinned nvim-treesitter still passes match[id] to single-node APIs,
+    -- which throws "attempt to call method 'range'". Two hotfixes:
 
-    -- Same v0.12 list-vs-node regression, but on the INJECTION path core
-    -- itself walks (LanguageTree:_parse -> get_range), which no directive
-    -- covers: the async injection parse hands vim.treesitter.get_range a
-    -- capture that is now a TSNode[] instead of a TSNode, and node:range()
-    -- blows up inside a vim.schedule callback -- exactly the crash seen when
-    -- previewing an injection-bearing file (PHP+HTML, markdown, ...) in the
-    -- <leader>ff / <leader>gs Telescope previews. Wrap get_range once so any
-    -- list capture is collapsed to its first node before :range() is called.
+    -- 1. Injection path: core's LanguageTree hands vim.treesitter.get_range a
+    --    list capture -- crashed Telescope previews of injection-bearing
+    --    files (PHP+HTML, markdown). Collapse a list to its first node.
     if not vim.treesitter._get_range_orig then
       vim.treesitter._get_range_orig = vim.treesitter.get_range
       vim.treesitter.get_range = function(node, source, metadata)
@@ -54,6 +53,8 @@ return {
       end
     end
 
+    -- 2. Markdown fenced-code directives -- fired on every LSP hover float
+    --    and tore down the highlighter. Re-register them list-safe.
     local query = vim.treesitter.query
     local function first_node(n)
       if type(n) == "table" and n[1] ~= nil then return n[1] end

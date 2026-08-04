@@ -1,14 +1,7 @@
--- LeetCode inside nvim. Start a dedicated session with `nvim leetcode` (the
--- `arg` below is what the plugin watches for) to land on the dashboard; in a
--- normal session `:Leet` loads it on demand.
---
--- First run: `:Leet cookie update` to sign in (paste the leetcode.com session
--- cookie from a logged-in browser). Then `:Leet list` / `:Leet daily` to pick a
--- question, `:Leet run` to test, `:Leet submit` to submit.
---
--- `:Leet run` / `:Leet console` execute on leetcode.com. To poke at a solution
--- locally instead -- dumping an array mid-craft, say -- see config/php.lua:
--- `:PhpRun`, `:PhpDriver`, `:PhpRepl`.
+-- LeetCode inside nvim. `nvim leetcode` lands on the dashboard (the plugin
+-- watches for that arg); in a normal session :Leet loads it on demand.
+-- First run: `:Leet cookie update` (paste the leetcode.com session cookie).
+-- :Leet run / console execute remotely; for local runs see config/php.lua.
 
 local leet_arg = "leetcode"
 
@@ -28,10 +21,8 @@ return {
     lang = "php",
     picker = { provider = "telescope" },
     hooks = {
-      -- config/layout.lua rebuilds the tree + welcome layout (with `only`) on
-      -- every BufEnter that finds the tree missing, which would shred the
-      -- dashboard and the question/description split. Hand the screen over to
-      -- leetcode while it's running; <leader>l takes it back.
+      -- Hand the screen over to leetcode while it runs (the layout autocmds
+      -- would otherwise shred its dashboard/splits); <leader>l takes it back.
       ["enter"] = {
         function()
           require("config.state").leetcode = true
