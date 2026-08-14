@@ -33,6 +33,12 @@ return {
       linehl     = false,  -- whole-line highlight (toggle with <leader>hL)
       word_diff  = true,   -- mark the exact changed chars inline
       on_attach = function(bufnr)
+        -- The merge result pane (config/mergeresult.lua) owns its gutter: the
+        -- ▌ bar there means "conflict block, co/ct work on this line" and
+        -- nothing else. gitsigns attaches asynchronously, so an explicit
+        -- detach can lose the race -- refusing here is what actually holds.
+        if vim.b[bufnr].merge_result then return false end
+
         local function map(l, r, desc)
           vim.keymap.set("n", l, r, { buffer = bufnr, desc = desc })
         end

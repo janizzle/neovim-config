@@ -53,15 +53,26 @@ end
 
 -- Diff & conflicts ------------------------------------------------------------
 
+-- This file, side by side, in place: your buffer stays on the left, the
+-- committed version opens on the right. See config/sidediff.lua.
+vim.keymap.set("n", "<leader>ds", function() require("config.sidediff").toggle() end,
+  { desc = "Diff: this file vs HEAD, side by side (toggle)" })
+
 -- Diffview always opens in its own tabpage; <leader>dq is the way back out.
 vim.keymap.set("n", "<leader>dv", "<cmd>DiffviewOpen<cr>",          { desc = "Diff: working changes" })
 vim.keymap.set("n", "<leader>dc", "<cmd>DiffviewOpen HEAD~1<cr>",   { desc = "Diff: last commit" })
 vim.keymap.set("n", "<leader>dh", "<cmd>DiffviewFileHistory %<cr>", { desc = "Diff: current file history" })
 vim.keymap.set("n", "<leader>dH", "<cmd>DiffviewFileHistory<cr>",   { desc = "Diff: repo history" })
 
+-- Merge workspace: conflict list + changed files on the left, OURS | working |
+-- THEIRS side by side. See config/merge.lua.
+vim.keymap.set("n", "<leader>dm", "<cmd>Merge<cr>", { desc = "Merge: resolve conflicts (diffview)" })
+
 -- Close Diffview, close any tabpage that is purely diff windows, and clear
 -- diff-mode leftovers (diff turns on scrollbind).
 local function diff_close()
+  pcall(function() require("config.merge").close_panel() end)
+  pcall(function() require("config.sidediff").close() end)
   pcall(vim.cmd, "DiffviewClose")
   for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
     if vim.api.nvim_tabpage_is_valid(tab) then
@@ -71,6 +82,7 @@ local function diff_close()
         local ft = vim.bo[buf].filetype
         local is_diff = vim.wo[win].diff
           or ft == "DiffviewFiles" or ft == "DiffviewFileHistory"
+          or ft == "MergeConflicts"
         if not is_diff then only_diff = false break end
       end
       if only_diff and #vim.api.nvim_list_tabpages() > 1 then

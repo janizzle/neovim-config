@@ -6,37 +6,33 @@ return {
   priority = 1000,
   dependencies = { "nvim-tree/nvim-web-devicons" },
   config = function()
+    local C = require("config.palette")
+
     local function apply_phpstorm_palette()
       local hl = vim.api.nvim_set_hl
-      local C = {
-        bg          = "#2B2B2B",
-        bg_float    = "#3C3F41",
-        fg          = "#A9B7C6",
-        cursorline  = "#323232",
-        line_nr     = "#606366",
-        comment     = "#629755",   -- green italic
-        string      = "#6A8759",
-        number      = "#56B6C2",   -- cyan
-        keyword     = "#CC7832",   -- orange bold
-        func        = "#61AFEF",   -- blue
-        named_arg   = "#6897BB",   -- darker blue, distinct from func
-        variable    = "#C678DD",   -- purple
-        type_color  = "#B0B4BA",   -- soft gray (class / type names)
-        type_builtin = "#CC7832",  -- orange (int, bool, string, ...)
-        tag         = "#E8BF6A",
-        attribute   = "#BABABA",
-        annotation  = "#BBB529",
-        colorcol    = "#555555",   -- thin line-length rule (virt-column)
-      }
 
       hl(0, "Normal",         { fg = C.fg, bg = C.bg })
+      hl(0, "NormalNC",       { fg = C.fg, bg = C.bg })
       -- Same bg as the buffer so the K popup doesn't read as a separate
       -- panel; the blue FloatBorder still delimits it.
       hl(0, "NormalFloat",    { fg = C.fg, bg = C.bg })
-      hl(0, "CursorLine",     { bg = C.cursorline })
+      hl(0, "CursorLine",     { bg = C.bg_sel })
       hl(0, "VirtColumn",     { fg = C.colorcol })
       hl(0, "LineNr",         { fg = C.line_nr })
       hl(0, "CursorLineNr",   { fg = C.fg, bold = true })
+      -- Chrome that would otherwise keep the theme's lighter grey and read as
+      -- a seam against the near-black background.
+      hl(0, "EndOfBuffer",    { fg = C.bg, bg = C.bg })
+      hl(0, "WinSeparator",   { fg = C.bg_alt, bg = C.bg })
+      hl(0, "VertSplit",      { fg = C.bg_alt, bg = C.bg })
+      hl(0, "Folded",         { fg = C.line_nr, bg = C.bg_alt })
+      hl(0, "FoldColumn",     { fg = C.line_nr, bg = "NONE" })
+      hl(0, "ColorColumn",    { bg = C.bg_alt })
+      -- listchars: middle dots for spaces (Whitespace) and the eol return
+      -- symbol (NonText). Dim enough to sit under the code, not on top of it.
+      hl(0, "Whitespace",     { fg = C.whitespace })
+      hl(0, "NonText",        { fg = C.whitespace })
+      hl(0, "SpecialKey",     { fg = C.whitespace })
 
       hl(0, "Comment",        { fg = C.comment, italic = true })
       hl(0, "String",         { fg = C.string })

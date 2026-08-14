@@ -49,7 +49,9 @@ end
 local function diff_tabpage()
   for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
     local ft = vim.bo[vim.api.nvim_win_get_buf(win)].filetype
-    if vim.wo[win].diff or ft == "DiffviewFiles" or ft == "DiffviewFileHistory" then
+    if vim.wo[win].diff
+      or ft == "DiffviewFiles" or ft == "DiffviewFileHistory" or ft == "MergeConflicts"
+    then
       return true
     end
   end

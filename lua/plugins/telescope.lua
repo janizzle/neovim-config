@@ -209,8 +209,13 @@ return {
       })
     end, { desc = "Find directories" })
 
+    -- Opens in normal mode, unlike the find pickers: this is a list of the
+    -- files you changed, not a search. You arrive to read it and move down it
+    -- with hjkl -- typing would only filter a list you can already see. `i`
+    -- still drops into the prompt when the list is long enough to want it.
     vim.keymap.set("n", "<leader>gs", function()
       builtin.git_status({
+        initial_mode = "normal",
         previewer = git_status_previewer,
         attach_mappings = with_action(open_in_main),
       })
