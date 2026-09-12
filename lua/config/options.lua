@@ -37,7 +37,7 @@ local no_list_ft = {
   NvimTree = true, TelescopePrompt = true, TelescopeResults = true,
   DiffviewFiles = true, DiffviewFileHistory = true, MergeConflicts = true,
   help = true, lazy = true, mason = true, qf = true, blame = true,
-  checkhealth = true, showkeys = true,
+  checkhealth = true, showkeys = true, ["dap-repl"] = true,
 }
 
 vim.api.nvim_create_autocmd({ "BufWinEnter", "FileType", "TermOpen" }, {

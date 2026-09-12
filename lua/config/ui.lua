@@ -76,11 +76,9 @@ local function improve_ui_colors()
   hl(0, "MergeOursDiffText",   { bg = C.merge_ours_text, bold = true })
   hl(0, "MergeTheirsDiff",     { bg = C.merge_theirs })
   hl(0, "MergeTheirsDiffText", { bg = C.merge_theirs_text, bold = true })
-  hl(0, "MergeCenter",         { bg = C.merge_center })
-  hl(0, "MergeCenterText",     { bg = C.merge_center_text, bold = true })
-  -- The result pane paints itself per line (see below), so vim's own diff
-  -- highlighting is mapped to this and disappears there: two highlighters
-  -- fighting over the same line is what makes a merge view unreadable.
+  -- The result pane never shows vim's own diff highlighting -- only open
+  -- conflicts are coloured there (see below) -- so it is mapped to this; side
+  -- panes switch to it too once they paint themselves.
   hl(0, "MergeResultPlain",    { bg = "NONE" })
   hl(0, "MergeFiller",         { fg = C.merge_filler_fg, bg = C.merge_filler_bg })
   -- diffview links this to Comment by default, which paints every absent-line
@@ -88,19 +86,15 @@ local function improve_ui_colors()
   hl(0, "DiffviewDiffDeleteDim", { fg = C.merge_filler_fg, bg = C.merge_filler_bg, italic = false })
 
   -- Result pane (config/mergeresult.lua), painted by us rather than by the diff
-  -- engine, so every line says exactly one thing:
-  --   red    -- an open conflict, still waiting on ct/co/cb/c0
-  --   blue   -- this line came from our side
-  --   purple -- this line came from their side
-  --   plain  -- identical on both sides, or your own typing
-  -- Red is only ever what is still left to do: answering a conflict drops the
-  -- band and leaves the line tinted like any other merged line.
+  -- engine: red marks an open conflict, still waiting on ct/co/cb/c0, and
+  -- nothing else is coloured -- auto-merged lines and answered conflicts stay
+  -- plain, so red is only ever what is still left to do.
   hl(0, "MergeConflict",      { bg = C.merge_conflict })
   hl(0, "MergeConflictTag",   { fg = C.red, bold = true })
   hl(0, "MergeHintTag",       { fg = C.line_nr, italic = true })
+  -- Side panes (paint_side): what that side changed against the merge base.
   hl(0, "MergeAutoOurs",      { bg = C.merge_ours })
   hl(0, "MergeAutoTheirs",    { bg = C.merge_theirs })
-  hl(0, "MergeAutoLocal",     { bg = C.merge_local })
   -- Gutter bracket: the only mark that means "co/ct/cb/c0 work here". The
   -- corner pieces close each block off, so two conflicts that touch never read
   -- as one.

@@ -1,6 +1,10 @@
 return {
   "nvim-telescope/telescope.nvim",
-  dependencies = { "nvim-lua/plenary.nvim" },
+  dependencies = {
+    "nvim-lua/plenary.nvim",
+    -- Native fzf sorter: faster, and supports 'exact / ^prefix / !not queries.
+    { "nvim-telescope/telescope-fzf-native.nvim", build = "make" },
+  },
   config = function()
     local state = require("config.state")
     local win_utils = require("config.windows")
@@ -126,6 +130,8 @@ return {
     }
 
     require("telescope").setup({ defaults = full_layout })
+    -- pcall: a failed `make` leaves telescope's own sorter in place.
+    pcall(require("telescope").load_extension, "fzf")
 
     local function open_in_main(prompt_bufnr)
       local entry = action_state.get_selected_entry()
@@ -137,7 +143,11 @@ return {
       pcall(function() require("config.blame").close() end)
       local main = win_utils.find_main_window()
       if main then vim.api.nvim_set_current_win(main) end
-      vim.cmd("edit " .. vim.fn.fnameescape(path))
+      -- Already the current file (symbols, diagnostics, same-file references):
+      -- :edit would re-read it and fail on unsaved changes (E37).
+      if vim.fn.fnamemodify(path, ":p") ~= vim.api.nvim_buf_get_name(0) then
+        vim.cmd("edit " .. vim.fn.fnameescape(path))
+      end
       if entry.lnum then
         pcall(vim.api.nvim_win_set_cursor, 0, { entry.lnum, (entry.col or 1) - 1 })
       end
@@ -208,6 +218,18 @@ return {
         attach_mappings = with_action(reveal_dir),
       })
     end, { desc = "Find directories" })
+
+    vim.keymap.set("n", "<leader>fs", function()
+      builtin.lsp_document_symbols({ attach_mappings = with_action(open_in_main) })
+    end, { desc = "Symbols in this file" })
+
+    vim.keymap.set("n", "<leader>fS", function()
+      builtin.lsp_dynamic_workspace_symbols({ attach_mappings = with_action(open_in_main) })
+    end, { desc = "Symbols in the project" })
+
+    vim.keymap.set("n", "<leader>fe", function()
+      builtin.diagnostics({ attach_mappings = with_action(open_in_main) })
+    end, { desc = "Diagnostics (all open buffers)" })
 
     -- Opens in normal mode, unlike the find pickers: this is a list of the
     -- files you changed, not a search. You arrive to read it and move down it

@@ -15,8 +15,10 @@ return {
         lualine_b = { "branch", "diff", "diagnostics" },
         -- fmt relabels only the start screen ("[No Name]" -> "Welcome");
         -- modified/readonly flags keep working.
+        -- aerial: breadcrumbs, the class › method the cursor is in.
         lualine_c = {
           { "filename", fmt = function(str) return vim.b.welcome_screen and "Welcome" or str end },
+          "aerial",
         },
         lualine_x = { "encoding", "fileformat", "filetype" },
         lualine_y = { "progress", total_lines },

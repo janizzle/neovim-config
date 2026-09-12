@@ -16,10 +16,17 @@ for _, name in ipairs({
   "treesitter",
   "twig",
   "lsp",
+  "completion",
+  "format",
   "lint",
+  "editing",
   -- navigation
   "nvim-tree",
   "telescope",
+  "aerial",
+  "which-key",
+  -- debugging
+  "dap",
   -- git
   "gitsigns",
   "blame",

@@ -143,6 +143,9 @@ local function style_panes()
   local wins = diff_windows()
   for _, win in ipairs(wins) do
     vim.wo[win].list = false
+    -- Whole files, not hunks: diff mode folds every unchanged stretch away,
+    -- and diffview re-applies that on each relayout, which re-runs this.
+    vim.wo[win].foldenable = false
   end
 
   local mr = require("config.mergeresult")
@@ -158,8 +161,10 @@ local function style_panes()
                    body = "MergeOursDiff",   text = "MergeOursDiffText" }
   local theirs = { side = "theirs", bar = "MergeWinbarTheirs", title = "THEIRS · " .. labels.theirs,
                    body = "MergeTheirsDiff", text = "MergeTheirsDiffText" }
+  -- Never vim's diff colours in the result: the only colour there is an open
+  -- conflict, painted by config/mergeresult.lua.
   local result = { bar = "MergeWinbarResult", title = "RESULT · merged",
-                   body = "MergeCenter", text = "MergeCenterText" }
+                   body = "MergeResultPlain", text = "MergeResultPlain" }
 
   local order
   if #wins == 1 then
@@ -185,12 +190,11 @@ local function style_panes()
       local buf = api.nvim_win_get_buf(win)
       local body, text = spec.body, spec.text
 
-      -- Both the result pane and the side panes paint themselves per line when
-      -- the result view is up. Vim's diff highlighting only knows "this row
-      -- differs from some other pane" -- a second, coarser opinion painted over
-      -- ours -- so switch it off rather than let the two fight.
+      -- The side panes paint themselves per line when the result view is up.
+      -- Vim's diff highlighting only knows "this row differs from some other
+      -- pane" -- a second, coarser opinion painted over ours -- so switch it
+      -- off there rather than let the two fight.
       if merged and spec == result then
-        body, text = "MergeResultPlain", "MergeResultPlain"
         -- The block brackets live in the gutter; "auto" would hide them the
         -- moment a file has no other signs.
         vim.wo[win].signcolumn = "yes:1"

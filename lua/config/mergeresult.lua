@@ -17,19 +17,10 @@
 --
 -- The pane is also painted here rather than by vim's diff engine, which only
 -- ever knows "this row differs from the pane next door" -- the same answer for
--- a hunk git merged and a hunk still waiting on you. Two layers:
---
---   band (per block)  red    still a conflict; ct/co/cb/c0 act on this block,
---                            and it is bracketed in the gutter so you can see
---                            exactly what one keypress replaces
---   tint (per line)   blue   this line came from our side
---                     purple this line came from their side
---                     grey   matches neither side: you typed it
---
--- Only open conflicts get a band. Answer one and the band goes -- the lines
--- keep the tint of whichever side you gave them, which is the same tint the
--- hunks git merged for you already carry. So what is marked red is always and
--- only what is still left to do.
+-- a hunk git merged and a hunk still waiting on you. Only open conflicts are
+-- coloured: a red band across the block (what ct/co/cb/c0 replace), bracketed
+-- in the gutter. Answer one and both go; hunks git merged for you are never
+-- marked. So whatever is coloured is always and only what is still left to do.
 
 local api = vim.api
 
@@ -39,7 +30,7 @@ local ns = api.nvim_create_namespace("MergeResult")
 local sign_ns = api.nvim_create_namespace("MergeResultSigns")
 local origin_ns = api.nvim_create_namespace("MergeResultOrigin")
 
---- bufnr -> { original = string[], regions = region[], ours = string[]?, theirs = string[]? }
+--- bufnr -> { original = string[], regions = region[], base = string[]? }
 --- region = { id, row, len, ours, base, theirs, choice, resolved }
 local state = {}
 
@@ -125,12 +116,10 @@ end
 
 --- An undecided block: red, and red means only this. A block you have decided
 --- is not marked at all -- it stops being a conflict the moment you answer it,
---- and it keeps only the per-line tint of the side it came from, exactly like
---- the hunks git merged for you. What is still marked is what is still left.
+--- exactly like the hunks git merged for you. What is marked is what is left.
 local CONFLICT = { hl = "MergeConflict", tag = "MergeConflictTag", sign = "MergeSignConflict" }
 
--- The band sits above the per-line origin tints (priority 100) so a conflict is
--- never striped by the colours of the sides it is made of.
+-- Above syntax and other extmark highlights, so a conflict reads as one block.
 local BAND_PRIORITY = 1000
 
 local function mark_opts(buf, region)
@@ -235,14 +224,13 @@ local function render_signs(buf, st)
   end
 end
 
--- Origin tints -----------------------------------------------------------------
+-- Side-pane tints -------------------------------------------------------------
 
---- Read stages 2 (ours) and 3 (theirs) of the conflicted file straight out of
---- the index. Comparing against those is the only way to say where a line in
---- the result came from: vim's diff engine only knows "this row differs from
---- the pane next door", which is the same answer for a hunk git merged and a
---- hunk you are still arguing with.
-local function read_stages(buf)
+--- Read stage 1, the merge base, of the conflicted file straight out of the
+--- index: each side pane is measured against it (see paint_side). Absent for
+--- an add/add conflict, where the file has no common ancestor and nothing can
+--- be "changed relative to" anything.
+local function read_base(buf)
   local abs = api.nvim_buf_get_name(buf)
   if abs == "" then return end
 
@@ -254,18 +242,13 @@ local function read_stages(buf)
 
   -- --show-prefix rather than trimming the repo root off the absolute path:
   -- the two disagree the moment anything in the path is a symlink, and the
-  -- symptom of that is silently losing every tint in the pane.
+  -- symptom of that is silently losing every tint in the side panes.
   local dir = vim.fn.fnamemodify(abs, ":h")
   local prefix = git({ "-C", dir, "rev-parse", "--show-prefix" })
   if not prefix then return end
 
   local rel = (prefix[1] or "") .. vim.fn.fnamemodify(abs, ":t")
-  return git({ "-C", dir, "show", ":2:" .. rel }),
-         git({ "-C", dir, "show", ":3:" .. rel }),
-         -- Stage 1, the merge base. Absent for an add/add conflict, where the
-         -- file has no common ancestor and nothing can be "changed relative to"
-         -- anything.
-         git({ "-C", dir, "show", ":1:" .. rel })
+  return git({ "-C", dir, "show", ":1:" .. rel })
 end
 
 --- Rows of `b` (0-indexed) that differ from `a`.
@@ -281,40 +264,6 @@ local function changed_rows(a, b)
     for i = 0, count_b - 1 do rows[start_b - 1 + i] = true end
   end
   return rows
-end
-
---- Tint every line by the side it came from. Lines identical in both stages --
---- the bulk of any file -- stay plain, so what is left coloured is exactly the
---- set of decisions this merge made: blue where ours won, purple where theirs
---- did, grey where neither matches because you typed it yourself.
-local function render_origins(buf, st)
-  api.nvim_buf_clear_namespace(buf, origin_ns, 0, -1)
-  if not (st.ours and st.theirs) then return end
-
-  local lines = api.nvim_buf_get_lines(buf, 0, -1, false)
-  local vs_ours = changed_rows(st.ours, lines)
-  local vs_theirs = changed_rows(st.theirs, lines)
-  if not (vs_ours and vs_theirs) then return end
-
-  for row = 0, #lines - 1 do
-    local group
-    if vs_ours[row] and vs_theirs[row] then
-      group = "MergeAutoLocal"
-    elseif vs_ours[row] then
-      group = "MergeAutoTheirs"
-    elseif vs_theirs[row] then
-      group = "MergeAutoOurs"
-    end
-    if group then
-      pcall(api.nvim_buf_set_extmark, buf, origin_ns, row, 0, {
-        end_row = row + 1,
-        end_col = 0,
-        hl_group = group,
-        hl_eol = true,
-        priority = 100,
-      })
-    end
-  end
 end
 
 --- Paint one of the side panes: only the lines that side actually changed,
@@ -353,13 +302,11 @@ function M.paint_side(buf, side)
   return true
 end
 
---- Repaint both layers. Cheap enough to run on every edit: two diffs against
---- strings we already hold, no git call.
+--- Redraw the gutter brackets. Cheap enough to run on every edit: no git call.
 local function repaint(buf)
   local st = state[buf]
   if not st then return end
   render_signs(buf, st)
-  render_origins(buf, st)
 end
 
 M.repaint = repaint
@@ -435,7 +382,6 @@ function M.attach(buf)
     end
     api.nvim_buf_clear_namespace(buf, ns, 0, -1)
     api.nvim_buf_clear_namespace(buf, sign_ns, 0, -1)
-    api.nvim_buf_clear_namespace(buf, origin_ns, 0, -1)
     state[buf] = nil
   end
 
@@ -448,8 +394,7 @@ function M.attach(buf)
   api.nvim_buf_set_lines(buf, 0, -1, false, result)
   vim.bo[buf].modifiable = was_modifiable
 
-  local ours, theirs, base = read_stages(buf)
-  state[buf] = { original = lines, regions = regions, ours = ours, theirs = theirs, base = base }
+  state[buf] = { original = lines, regions = regions, base = read_base(buf) }
   for _, region in ipairs(regions) do
     region.len = #region.ours
     place(buf, region)
@@ -489,7 +434,6 @@ function M.revert(buf)
   if not st then return false end
   api.nvim_buf_clear_namespace(buf, ns, 0, -1)
   api.nvim_buf_clear_namespace(buf, sign_ns, 0, -1)
-  api.nvim_buf_clear_namespace(buf, origin_ns, 0, -1)
   vim.bo[buf].modifiable = true
   api.nvim_buf_set_lines(buf, 0, -1, false, st.original)
   state[buf] = nil
@@ -531,7 +475,6 @@ local function choose(kind)
     state[buf] = nil
     api.nvim_buf_clear_namespace(buf, ns, 0, -1)
     api.nvim_buf_clear_namespace(buf, sign_ns, 0, -1)
-    api.nvim_buf_clear_namespace(buf, origin_ns, 0, -1)
     vim.notify("Merge: buffer was reloaded with markers -- reopen with :Merge", vim.log.levels.WARN)
     return false
   end
@@ -641,9 +584,8 @@ api.nvim_create_autocmd({ "BufEnter", "BufWinEnter" }, {
   end,
 })
 
--- Your own edits move the blocks and change which lines still match a side, so
--- the tints have to follow. Debounced: this runs on every keystroke in insert
--- mode otherwise.
+-- Your own edits move the blocks, so the gutter brackets have to follow.
+-- Debounced: this runs on every keystroke in insert mode otherwise.
 local repaint_timer
 api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "InsertLeave" }, {
   group = api.nvim_create_augroup("MergeResultRepaint", { clear = true }),

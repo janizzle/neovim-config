@@ -75,6 +75,8 @@ local sections = {
     row("<space>ff", "Find files",        "<space>fg", "Live grep"),
     row("<space>fw", "Grep word",         "<space>fb", "Switch buffers"),
     row("<space>fd", "Find directory",    "<space>fh", "Help tags"),
+    row("<space>fs", "File symbols",      "<space>fS", "Project symbols"),
+    row("<space>fe", "Diagnostics"),
   }},
 
   { "Buffers & windows", {
@@ -90,6 +92,20 @@ local sections = {
     row("K",          "Hover docs",       "gD gi gy",   "Decl · impl · type"),
     row("[d ]d",      "Prev / next diagnostic"),
     row("<space>rn",  "Rename symbol",    "<space>ca",  "Code action"),
+    row("<space>cf",  "Format",           "<space>o",   "Structure view"),
+    row("<C-space>",  "Completion",       "<cr>",       "Accept"),
+  }},
+
+  { "Editing", {
+    row("sa",    "Add surround",       "sd sr", "Delete / replace"),
+    row("af if", "Around/in function", "ac ic", "Around/in class"),
+  }},
+
+  { "Debug (Xdebug, port 9003)", {
+    row("<space>bc", "Start / continue",  "<space>bq", "Stop"),
+    row("<space>bb", "Breakpoint",        "<space>bB", "Conditional"),
+    row("<space>bo", "Step over",         "<space>bi", "Step into"),
+    row("<space>bO", "Step out",          "<space>bu", "Debug panels"),
   }},
 
   { "File tree", {

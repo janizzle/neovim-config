@@ -57,9 +57,6 @@ return {
   -- differing characters inside it.
   merge_conflict      = "#411620",
   merge_conflict_text = "#5C1D29",
-  merge_local         = "#1C1F26",   -- your own edits: matches neither side
   merge_filler_bg     = "#0E0E12",
   merge_filler_fg     = "#26262C",
-  merge_center        = "#191922",   -- result pane before it is taken over
-  merge_center_text   = "#262631",
 }

@@ -1,114 +1,55 @@
 return {
-  -- LSP: intelephense (PHP) + ts_ls (JS/TS), installed by mason.
+  -- LSP: every server listed in config/servers.lua, installed by mason.
   "neovim/nvim-lspconfig",
   dependencies = {
     { "mason-org/mason.nvim", opts = {} },
     { "mason-org/mason-lspconfig.nvim" },
+    { "b0o/SchemaStore.nvim" },   -- json/yaml schemas, read by config/servers.lua
   },
   config = function()
+    local mason = require("config.mason")
+    local servers = require("config.servers")
+    local names = vim.tbl_keys(servers)
+
     require("mason").setup()
-    require("mason-lspconfig").setup({
-      ensure_installed = { "intelephense", "ts_ls" },
-    })
+    require("mason-lspconfig").setup({ ensure_installed = names })
 
-    -- Resolve a server binary: mason's install dir first, then $PATH, then
-    -- the bare name. nvim-lspconfig's bundled cmds are bare names, and the
-    -- current mason-org split no longer rewrites them to mason's absolute
-    -- path -- on a machine where the binary is mason-only (WSL) the client
-    -- then silently never starts and gd/gr fall back to keyword jumps.
-    local function mason_bin(name)
-      return vim.fn.stdpath("data") .. "/mason/bin/" .. name
-    end
-    local function server_cmd(name)
-      local bin = mason_bin(name)
-      if (vim.uv or vim.loop).fs_stat(bin) then return bin end
-      local on_path = vim.fn.exepath(name)
-      return on_path ~= "" and on_path or name
+    -- Point a table cmd at mason's binary. nvim-lspconfig's bundled cmds are
+    -- bare names, and the current mason-org split no longer rewrites them to
+    -- mason's absolute path -- on a machine where the binary is mason-only
+    -- (WSL) the client then silently never starts and gd/gr fall back to
+    -- keyword jumps. Function cmds (the vscode-* servers) resolve the
+    -- project's node_modules/.bin first, then $PATH.
+    local function resolve_cmd(name)
+      local cmd = vim.lsp.config[name].cmd
+      if type(cmd) ~= "table" then return end
+      vim.lsp.config(name, { cmd = { mason.cmd(vim.fs.basename(cmd[1])), unpack(cmd, 2) } })
     end
 
-    vim.lsp.config("intelephense", {
-      cmd = { server_cmd("intelephense"), "--stdio" },
-      -- Anchor a workspace even without composer.json/.git (source-only
-      -- checkout); single-file mode can't resolve cross-file gd.
-      root_dir = function(bufnr, on_dir)
-        local root = vim.fs.root(bufnr, {
-          "composer.json", ".git", "phpstan.neon", "phpstan.neon.dist",
-        })
-        on_dir(root or (vim.uv or vim.loop).cwd())
-      end,
-      settings = {
-        intelephense = {
-          -- Intelephense's full default stub list PLUS "gettext" (defines the
-          -- _() translation alias). Must be explicit: setting "stubs" at all
-          -- REPLACES the default set, so omissions go dark.
-          stubs = {
-            "apache", "bcmath", "bz2", "calendar", "com_dotnet", "Core",
-            "ctype", "curl", "date", "dba", "dom", "enchant", "exif",
-            "fileinfo", "filter", "fpm", "ftp", "gd", "gettext", "gmp",
-            "hash", "iconv", "imap", "intl", "json", "ldap", "libxml",
-            "mbstring", "meta", "mysqli", "oci8", "odbc", "openssl", "pcntl",
-            "pcre", "PDO", "pdo_ibm", "pdo_mysql", "pdo_pgsql", "pdo_sqlite",
-            "pgsql", "Phar", "posix", "pspell", "readline", "Reflection",
-            "session", "shmop", "SimpleXML", "snmp", "soap", "sockets",
-            "sodium", "SPL", "sqlite3", "standard", "superglobals", "sysvmsg",
-            "sysvsem", "sysvshm", "tidy", "tokenizer", "xml", "xmlreader",
-            "xmlrpc", "xmlwriter", "xsl", "Zend OPcache", "zip", "zlib",
-          },
-          files = {
-            maxSize = 5000000,
-            -- .direnv/ holds flake-input symlinks into /nix/store, some of
-            -- which contain PHP -- indexed, every gd offered the real result
-            -- plus its Nix copy. Keep the duplicates out of the index.
-            exclude = {
-              "**/.git/**",
-              "**/.direnv/**",
-              "**/node_modules/**",
-              "**/vendor/**/{Tests,tests}/**",
-              "/nix/store/**",
-              "**/nix/store/**",
-            },
-          },
-        },
-      },
-    })
-
-    vim.lsp.config("ts_ls", {
-      cmd = { server_cmd("typescript-language-server"), "--stdio" },
-      root_dir = function(bufnr, on_dir)
-        local root = vim.fs.root(bufnr, {
-          "package.json", "tsconfig.json", "jsconfig.json", ".git",
-        })
-        on_dir(root or (vim.uv or vim.loop).cwd())
-      end,
-    })
+    for name, opts in pairs(servers) do
+      vim.lsp.config(name, opts)
+      resolve_cmd(name)
+    end
 
     -- vim.lsp.config() only registers; without enable() no client starts,
     -- LspAttach never fires and the maps below never bind (nvim 0.11+).
-    vim.lsp.enable("intelephense")
-    vim.lsp.enable("ts_ls")
+    vim.lsp.enable(names)
 
-    -- Fresh machine: mason installs asynchronously. If the binary lands after
-    -- a matching buffer already opened, re-point cmd at it and re-fire
-    -- FileType so the client attaches without a restart.
-    local function reattach_on_install(pkg, lsp_name, fts)
-      local ok, registry = pcall(require, "mason-registry")
-      if not ok or not registry.has_package(pkg) or registry.is_installed(pkg) then
-        return
-      end
-      registry.get_package(pkg):once("install:success", function()
-        vim.schedule(function()
-          vim.lsp.config(lsp_name, { cmd = { mason_bin(pkg), "--stdio" } })
-          for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-            if vim.tbl_contains(fts, vim.bo[buf].filetype) then
-              vim.api.nvim_exec_autocmds("FileType", { buffer = buf, modeline = false })
-            end
+    -- Fresh machine: mason installs asynchronously. If a server lands after a
+    -- matching buffer already opened, re-point cmd at it and re-fire FileType
+    -- so the client attaches without a restart.
+    local to_package = require("mason-lspconfig").get_mappings().lspconfig_to_package
+    for _, name in ipairs(names) do
+      mason.on_install(to_package[name], function()
+        resolve_cmd(name)
+        local fts = vim.lsp.config[name].filetypes or {}
+        for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+          if vim.tbl_contains(fts, vim.bo[buf].filetype) then
+            vim.api.nvim_exec_autocmds("FileType", { buffer = buf, modeline = false })
           end
-        end)
+        end
       end)
     end
-    reattach_on_install("intelephense", "intelephense", { "php" })
-    reattach_on_install("typescript-language-server", "ts_ls",
-      { "javascript", "javascriptreact", "typescript", "typescriptreact" })
 
     -- An exclude change only affects a FRESH index; this restarts the server
     -- with clearCache once so the index rebuilds without the Nix duplicates,
