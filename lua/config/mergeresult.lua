@@ -417,13 +417,28 @@ M.repaint = repaint
 --- a second thing competing for the one channel that is supposed to mean
 --- "conflict block, keys work here" and nothing else. It re-attaches on buffer
 --- events, so this gets called on every attach and on every BufEnter rather
---- than once. gitsigns comes back on :MergeMarkers or the next fresh open.
+--- than once. gitsigns comes back on :MergeMarkers or when the merge view
+--- closes (release_gitsigns).
 local function silence_gitsigns(buf)
   -- The flag is what actually holds: gitsigns attaches asynchronously, so a
   -- detach issued here can run before it ever attached. plugins/gitsigns.lua
   -- reads this in its on_attach and refuses the buffer.
   vim.b[buf].merge_result = true
   pcall(function() require("gitsigns").detach(buf) end)
+end
+
+M.silence_gitsigns = silence_gitsigns
+
+--- The merge view is gone: hand every buffer it silenced back to gitsigns.
+--- The result pane is the real working file, so without this it would stay
+--- unmarked in ordinary editing until the buffer is wiped.
+function M.release_gitsigns()
+  for _, buf in ipairs(api.nvim_list_bufs()) do
+    if vim.b[buf].merge_result then
+      vim.b[buf].merge_result = nil
+      pcall(function() require("gitsigns").attach(buf) end)
+    end
+  end
 end
 
 -- Keymaps ---------------------------------------------------------------------
@@ -689,8 +704,9 @@ api.nvim_create_autocmd({ "BufEnter", "BufWinEnter" }, {
     if not state[ev.buf] then return end
     M.attach_keymaps(ev.buf)
     -- gitsigns re-attaches itself on buffer events; keep the gutter meaning
-    -- exactly one thing for as long as the result view is up.
-    silence_gitsigns(ev.buf)
+    -- exactly one thing for as long as the result view is up. Only in a diff
+    -- window: outside the merge view the flag would outlive release_gitsigns.
+    if vim.wo.diff then silence_gitsigns(ev.buf) end
   end,
 })
 

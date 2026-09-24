@@ -253,6 +253,9 @@ local function style_panes()
           end
         end
         lost.title = lost.title .. " · DELETED the file"
+        -- Nothing in the result is open for a decision, so nothing there is
+        -- coloured -- gitsigns would only repeat the survivor pane's marks.
+        if result_buf then mr.silence_gitsigns(result_buf) end
       end
     end
 
@@ -600,7 +603,10 @@ api.nvim_create_autocmd("User", {
 api.nvim_create_autocmd("User", {
   group = augroup,
   pattern = "DiffviewViewClosed",
-  callback = function() M.close_panel() end,
+  callback = function()
+    M.close_panel()
+    require("config.mergeresult").release_gitsigns()
+  end,
 })
 
 -- Any of these can follow a layout rebuild, so re-anchor rather than just
