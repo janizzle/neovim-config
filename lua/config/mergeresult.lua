@@ -40,14 +40,22 @@ M.origin_namespace = origin_ns
 
 -- Parsing ---------------------------------------------------------------------
 
+--- Exactly git's markers: seven characters, then a label or nothing. A prefix
+--- match would take an rst heading underline ("==========") or a longer
+--- recursive-merge marker for a separator and split the block in the wrong
+--- place -- ours losing lines, theirs gaining them.
 local function is_marker(line, marker)
-  return line:sub(1, 7) == marker
+  if line:sub(1, 7) ~= marker then return false end
+  local rest = line:sub(8)
+  if marker == "=======" then return rest == "" or rest == "\r" end
+  return rest == "" or rest:sub(1, 1) == " " or rest == "\r"
 end
 
 --- Split marker'd content into plain lines plus the conflict regions.
 --- Returns nil when there is nothing to do (no conflicts) or when the markers
---- are malformed -- in that case the buffer is left exactly as it was.
---- @return string[]? lines, table[]? regions
+--- are malformed or ambiguous -- in that case the buffer is left exactly as it
+--- was, and the reason comes back as the second value.
+--- @return string[]? lines, table[]|string regions
 local function parse(lines)
   local out, regions = {}, {}
   local i, n = 1, #lines
@@ -55,15 +63,22 @@ local function parse(lines)
   while i <= n do
     if is_marker(lines[i], "<<<<<<<") then
       local ours, base, theirs = {}, nil, {}
-      local target, closed = ours, false
+      local target, closed, separators = ours, false, 0
       i = i + 1
 
       while i <= n do
         local line = lines[i]
-        if is_marker(line, "|||||||") then       -- only with conflictstyle=diff3
+        if is_marker(line, "<<<<<<<") then
+          return nil, "nested conflict markers"
+        elseif is_marker(line, "|||||||") and target == ours then  -- diff3 / zdiff3
           base = {}
           target = base
         elseif is_marker(line, "=======") then
+          -- A file that itself contains a bare "=======" line makes the text
+          -- ambiguous: git writes no escape, so there is no telling which one
+          -- is the separator. Guessing wrong rewrites the block silently.
+          separators = separators + 1
+          if separators > 1 then return nil, "a '=======' line inside a conflict" end
           target = theirs
         elseif is_marker(line, ">>>>>>>") then
           closed = true
@@ -75,7 +90,7 @@ local function parse(lines)
         i = i + 1
       end
 
-      if not closed then return nil end
+      if not closed or separators ~= 1 then return nil, "unterminated conflict markers" end
 
       regions[#regions + 1] = {
         row = #out,          -- 0-indexed start row in the result
@@ -92,7 +107,7 @@ local function parse(lines)
     end
   end
 
-  if #regions == 0 then return nil end
+  if #regions == 0 then return nil, "no conflict markers" end
   return out, regions
 end
 
@@ -122,7 +137,26 @@ local CONFLICT = { hl = "MergeConflict", tag = "MergeConflictTag", sign = "Merge
 -- Above syntax and other extmark highlights, so a conflict reads as one block.
 local BAND_PRIORITY = 1000
 
+--- Where the block's extmark goes, as (row, col) plus the options.
+---
+--- A block is the half-open row range [row, row + len). Both ends normally sit
+--- at column 0 of their row, but a row past the last line can't hold a mark --
+--- which is where a block that runs to the end of the file ends, and where one
+--- that is *empty* at the end of the file (OURS deleted the tail, THEIRS edited
+--- it) starts. Those ends are pinned to the end of the last line instead, and
+--- the region remembers it (`start_after` / `end_after`) for `range()`. Reading
+--- the column back can't tell the two apart when the last line is blank, and
+--- getting it wrong leaves the block's final line behind when it is replaced,
+--- or makes an empty block unreachable -- silent corruption either way.
 local function mark_opts(buf, region)
+  local count = api.nvim_buf_line_count(buf)
+  local last = count - 1
+  local eol = #(api.nvim_buf_get_lines(buf, last, last + 1, false)[1] or "")
+
+  local row, col = region.row, 0
+  region.start_after = row > last
+  if region.start_after then row, col = last, eol end
+
   local opts = {
     end_row = region.row + region.len,
     end_col = 0,
@@ -130,17 +164,8 @@ local function mark_opts(buf, region)
     end_right_gravity = true,
     priority = BAND_PRIORITY,
   }
-
-  -- `end_row` is inclusive and must be a real line, so a block that runs to the
-  -- end of the file can't be expressed as "start of the row after it". Pin it to
-  -- the last line's end instead; `range()` reads end_col to tell the two forms
-  -- apart. Getting this wrong leaves the block's final line behind when it is
-  -- replaced, which is silent corruption.
-  local last = api.nvim_buf_line_count(buf) - 1
-  if opts.end_row > last then
-    opts.end_row = last
-    opts.end_col = #(api.nvim_buf_get_lines(buf, last, last + 1, false)[1] or "")
-  end
+  region.end_after = opts.end_row > last
+  if region.end_after then opts.end_row, opts.end_col = last, eol end
 
   if region.resolved then
     -- Nothing to show: the extmark stays only so the block keeps following
@@ -154,8 +179,15 @@ local function mark_opts(buf, region)
     opts.hl_group = CONFLICT.hl
     opts.hl_eol = true
     opts.priority = BAND_PRIORITY
+    -- A block OURS left empty has no lines to band. The tag then sits on the
+    -- line it collapsed onto -- the one below it, or the last line when it is
+    -- at the end of the file -- and says so, rather than seeming to claim
+    -- that line as the conflict.
+    local where = region.len > 0 and "showing OURS · " .. labels.ours
+      or (region.start_after and "OURS has nothing here, THEIRS adds below"
+        or "OURS has nothing here, THEIRS adds above")
     opts.virt_text = {
-      { "  ◆ CONFLICT · showing OURS · " .. labels.ours, CONFLICT.tag },
+      { "  ◆ CONFLICT · " .. where, CONFLICT.tag },
       { "  ct theirs · co ours · cb both · c0 drop", "MergeHintTag" },
     }
   end
@@ -163,11 +195,12 @@ local function mark_opts(buf, region)
   -- step with the other two, which is the exact problem we are removing.
   opts.virt_text_pos = "eol"
 
-  return opts
+  return row, col, opts
 end
 
 local function place(buf, region)
-  region.id = api.nvim_buf_set_extmark(buf, ns, region.row, 0, mark_opts(buf, region))
+  local row, col, opts = mark_opts(buf, region)
+  region.id = api.nvim_buf_set_extmark(buf, ns, row, col, opts)
 end
 
 --- Current line range of a region as a half-open [start, end) row pair, read
@@ -176,12 +209,13 @@ local function range(buf, region)
   local pos = api.nvim_buf_get_extmark_by_id(buf, ns, region.id, { details = true })
   if not pos or not pos[1] then return nil end
 
-  local s = pos[1]
   local details = pos[3] or {}
+  local s = pos[1]
   local e = details.end_row or s
-  -- end_col > 0 means the mark was pinned inside its last line (see mark_opts),
-  -- so that line belongs to the block.
-  if (details.end_col or 0) > 0 then e = e + 1 end
+  -- Ends pinned to the end of the last line stand for the row after it (see
+  -- mark_opts).
+  if region.start_after then s = s + 1 end
+  if region.end_after then e = e + 1 end
 
   return s, math.max(e, s)
 end
@@ -192,7 +226,7 @@ end
 --- The red band alone can't carry this: two conflicts that happen to touch
 --- would read as one region. The corner pieces close each block off, so what
 --- you see bracketed is exactly what one keypress replaces.
-local BAR = { top = "┌", mid = "│", bottom = "└", only = "◆" }
+local BAR = { top = "┌", mid = "│", bottom = "└", only = "◆", empty = "◇" }
 
 local function render_signs(buf, st)
   api.nvim_buf_clear_namespace(buf, sign_ns, 0, -1)
@@ -213,7 +247,11 @@ local function render_signs(buf, st)
         })
       end
 
-      if e - s == 1 then
+      if e == s then
+        -- Empty in OURS: marked on the line it collapsed onto, which is also
+        -- the line region_at() accepts the keys on.
+        bar(math.min(s, last - 1), BAR.empty)
+      elseif e - s == 1 then
         bar(s, BAR.only)
       elseif e > s then
         bar(s, BAR.top)
@@ -302,6 +340,70 @@ function M.paint_side(buf, side)
   return true
 end
 
+--- Paint the surviving side of a modify/delete conflict: one side deleted the
+--- file, the other kept editing it.
+---
+--- Vim's diff can only say "every line is new" there -- it is diffing against
+--- nothing -- which is true and useless: what you need to know is whether the
+--- edits they made since the base have to be carried over to wherever the file
+--- went. So the whole file gets the side's tint as the bottom layer, and the
+--- lines this side actually changed against the merge base go on top in the
+--- side's strong shade, with the kind of change in the gutter (+ added,
+--- ~ changed, _ lines removed below).
+---
+--- Both layers are painted here. The caller has to switch vim's diff colours
+--- off in this pane: a diff line highlight draws over extmark backgrounds on
+--- every cell that holds text, so the strong shade would only ever show in the
+--- blank space past the end of each line.
+---
+--- @param side "ours"|"theirs"
+--- @return integer changed -- lines added or changed, for the pane title
+function M.paint_survivor(buf, base, side)
+  if not (buf and api.nvim_buf_is_valid(buf) and base) then return 0 end
+
+  local function text(lines) return table.concat(lines, "\n") .. "\n" end
+  local lines = api.nvim_buf_get_lines(buf, 0, -1, false)
+  local ok, hunks = pcall(vim.diff, text(base), text(lines),
+    { result_type = "indices", algorithm = "histogram" })
+  if not ok or type(hunks) ~= "table" then return 0 end
+
+  local suffix = side == "theirs" and "Theirs" or "Ours"
+  local line_hl, sign_hl = "MergeSurvivor" .. suffix, "MergeSurvivorSign" .. suffix
+  local last = #lines - 1
+  local changed = 0
+
+  api.nvim_buf_clear_namespace(buf, origin_ns, 0, -1)
+  -- Bottom layer: the whole file is this side's, since the other one has none
+  -- of it. Lower priority than the strong shade, which wins where both apply.
+  pcall(api.nvim_buf_set_extmark, buf, origin_ns, 0, 0, {
+    end_row = last + 1, end_col = 0, strict = false,
+    hl_group = "MergeAuto" .. suffix, hl_eol = true, priority = 90,
+  })
+  local function sign(row, glyph)
+    pcall(api.nvim_buf_set_extmark, buf, origin_ns, math.max(0, math.min(row, last)), 0, {
+      sign_text = glyph, sign_hl_group = sign_hl, priority = 150,
+    })
+  end
+
+  for _, h in ipairs(hunks) do
+    local count_a, start_b, count_b = h[2], h[3], h[4]
+    if count_b == 0 then
+      -- Removed lines have no row here: flag the line they sat below.
+      if start_b == 0 then sign(0, "‾") else sign(start_b - 1, "_") end
+    else
+      local glyph = count_a == 0 and "+" or "~"
+      for row = start_b - 1, start_b + count_b - 2 do
+        changed = changed + 1
+        pcall(api.nvim_buf_set_extmark, buf, origin_ns, row, 0, {
+          end_row = row + 1, end_col = 0, hl_group = line_hl, hl_eol = true, priority = 100,
+        })
+        sign(row, glyph)
+      end
+    end
+  end
+  return changed
+end
+
 --- Redraw the gutter brackets. Cheap enough to run on every edit: no git call.
 local function repaint(buf)
   local st = state[buf]
@@ -387,7 +489,15 @@ function M.attach(buf)
 
   local lines = api.nvim_buf_get_lines(buf, 0, -1, false)
   local result, regions = parse(lines)
-  if not result then return false end
+  if not result then
+    -- Say why once per buffer: attach runs again on every relayout.
+    if regions ~= "no conflict markers" and vim.b[buf].merge_result_refused ~= regions then
+      vim.b[buf].merge_result_refused = regions
+      vim.notify(("Merge: %s has %s -- left the raw markers in place, resolve this one by hand")
+        :format(vim.fn.fnamemodify(api.nvim_buf_get_name(buf), ":t"), regions), vim.log.levels.WARN)
+    end
+    return false
+  end
 
   local was_modifiable = vim.bo[buf].modifiable
   vim.bo[buf].modifiable = true

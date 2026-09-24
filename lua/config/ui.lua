@@ -95,6 +95,13 @@ local function improve_ui_colors()
   -- Side panes (paint_side): what that side changed against the merge base.
   hl(0, "MergeAutoOurs",      { bg = C.merge_ours })
   hl(0, "MergeAutoTheirs",    { bg = C.merge_theirs })
+  -- Modify/delete conflicts (paint_survivor): the whole surviving file keeps
+  -- its side's tint, and the lines that side changed since the base sit on top
+  -- of it a shade stronger -- the edits you may have to port elsewhere.
+  hl(0, "MergeSurvivorOurs",       { bg = C.merge_ours_text })
+  hl(0, "MergeSurvivorTheirs",     { bg = C.merge_theirs_text })
+  hl(0, "MergeSurvivorSignOurs",   { fg = blue, bold = true })
+  hl(0, "MergeSurvivorSignTheirs", { fg = purple, bold = true })
   -- Gutter bracket: the only mark that means "co/ct/cb/c0 work here". The
   -- corner pieces close each block off, so two conflicts that touch never read
   -- as one.

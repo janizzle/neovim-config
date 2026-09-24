@@ -128,6 +128,16 @@ return {
       end)
     end
 
+    -- Neovim 0.11+ ships global grr/gri/gra/grn/grt/grx (and gO). With them
+    -- around, our `gr` is only a prefix: Neovim waits after it, and one extra
+    -- key lands in grr/gri -- plain vim.lsp.buf calls that fill the quickfix
+    -- window at the bottom instead of Telescope. Everything they do has its
+    -- own key here (gr, gi, <leader>ca, <leader>rn, gy).
+    for _, lhs in ipairs({ "grr", "gri", "grn", "grt", "grx" }) do
+      pcall(vim.keymap.del, "n", lhs)
+    end
+    pcall(vim.keymap.del, { "n", "x" }, "gra")
+
     -- Buffer-local navigation keys, active once a server attaches.
     vim.api.nvim_create_autocmd("LspAttach", {
       callback = function(ev)
@@ -137,18 +147,26 @@ return {
         end
         local tb = require("telescope.builtin")
 
-        map("gd", vim.lsp.buf.definition,        "LSP: go to definition")
-        map("gD", vim.lsp.buf.declaration,       "LSP: go to declaration")
-        map("gi", vim.lsp.buf.implementation,    "LSP: go to implementation")
-        map("gy", vim.lsp.buf.type_definition,   "LSP: go to type definition")
-        -- Full-size Telescope picker; selection routes into the main window
-        -- (never the blame column).
-        map("gr", function()
-          tb.lsp_references({
-            attach_mappings = require("config.picker").open_in_main,
-            include_declaration = false,
-          })
-        end, "LSP: find references")
+        -- Every jump goes through Telescope: one result jumps straight there,
+        -- several open the full-size picker, and a selection routes into the
+        -- main window (never the blame column). vim.lsp.buf.definition & co.
+        -- dump several results into the quickfix window at the bottom instead
+        -- -- which is what gd did whenever a server answered twice (intelephense
+        -- duplicates, a .d.ts next to the source).
+        local function picker(fn, extra)
+          return function()
+            fn(vim.tbl_extend("force", {
+              attach_mappings = require("config.picker").open_in_main,
+            }, extra or {}))
+          end
+        end
+
+        map("gd", picker(tb.lsp_definitions),      "LSP: go to definition")
+        map("gD", vim.lsp.buf.declaration,         "LSP: go to declaration")
+        map("gi", picker(tb.lsp_implementations),  "LSP: go to implementation")
+        map("gy", picker(tb.lsp_type_definitions), "LSP: go to type definition")
+        map("gr", picker(tb.lsp_references, { include_declaration = false }),
+          "LSP: find references")
         map("K",  smart_hover, "LSP: hover docs (+ full error on diagnostic lines)")
         map("<leader>rn", vim.lsp.buf.rename,     "LSP: rename symbol")
         map("<leader>ca", vim.lsp.buf.code_action,"LSP: code action")

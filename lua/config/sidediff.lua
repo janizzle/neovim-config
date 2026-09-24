@@ -19,7 +19,7 @@ local M = {}
 
 -- One at a time, like the blame column: two of these side by side is four
 -- scroll-bound windows and no room left to read any of them.
-local view = { win = nil, buf = nil, src_win = nil, src_buf = nil }
+local view = { win = nil, buf = nil, src_win = nil, src_buf = nil, src_foldenable = nil }
 
 local function git(args)
   local out = vim.fn.systemlist(vim.list_extend({ "git" }, args))
@@ -64,8 +64,8 @@ local function winbar(group, text)
 end
 
 function M.close()
-  local win, buf, src = view.win, view.buf, view.src_win
-  view = { win = nil, buf = nil, src_win = nil, src_buf = nil }
+  local win, buf, src, foldenable = view.win, view.buf, view.src_win, view.src_foldenable
+  view = { win = nil, buf = nil, src_win = nil, src_buf = nil, src_foldenable = nil }
 
   if win and api.nvim_win_is_valid(win) and #api.nvim_tabpage_list_wins(0) > 1 then
     pcall(api.nvim_win_close, win, true)
@@ -79,6 +79,7 @@ function M.close()
   if src and api.nvim_win_is_valid(src) then
     api.nvim_win_call(src, function() vim.cmd("diffoff") end)
     vim.wo[src].winbar = ""
+    if foldenable ~= nil then vim.wo[src].foldenable = foldenable end
   end
 end
 
@@ -129,11 +130,15 @@ function M.open()
     api.nvim_win_set_buf(win, buf)
   end)
 
-  view = { win = win, buf = buf, src_win = src_win, src_buf = src_buf }
+  view = { win = win, buf = buf, src_win = src_win, src_buf = src_buf,
+    src_foldenable = vim.wo[src_win].foldenable }
 
   for _, w in ipairs({ src_win, win }) do
     api.nvim_win_call(w, function() vim.cmd("diffthis") end)
     vim.wo[w].list = false
+    -- The whole file, not just the hunks: diff mode folds every unchanged
+    -- stretch away, which hides the code the changes sit in.
+    vim.wo[w].foldenable = false
   end
   vim.wo[src_win].winbar = winbar("DiffSideWinbarNew", "WORKING TREE · " .. vim.fn.fnamemodify(abs, ":t"))
   vim.wo[win].winbar = winbar("DiffSideWinbarOld", rev .. " · as committed")

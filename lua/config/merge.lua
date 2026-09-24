@@ -71,18 +71,61 @@ local function count_conflicts(abs)
   return n
 end
 
+--- Which index stages an unmerged path has: 1 base, 2 ours, 3 theirs. A path
+--- with a base and only one side is a modify/delete conflict -- the other side
+--- deleted the file -- and has no markers to count.
+--- @return table<string, table<integer, true>> rel path -> stage set
+local function unmerged_stages(root)
+  local stages = {}
+  for _, line in ipairs(git({ "-C", root, "ls-files", "-u" }) or {}) do
+    local stage, rel = line:match("^%S+ %S+ (%d)\t(.+)$")
+    if stage then
+      stages[rel] = stages[rel] or {}
+      stages[rel][tonumber(stage)] = true
+    end
+  end
+  return stages
+end
+
+--- "ours" / "theirs" for the side that deleted a modify/delete path, else nil.
+local function deleted_by(st)
+  if not (st and st[1]) then return end
+  if st[2] and not st[3] then return "theirs" end
+  if st[3] and not st[2] then return "ours" end
+end
+
 --- Unmerged paths, relative to the repo root (same form as diffview's
 --- `FileEntry.path`), each with the number of conflict regions still left.
 local function collect()
   local root = repo_root()
   if not root then return nil, {} end
+  local stages = unmerged_stages(root)
   local entries = {}
   for _, rel in ipairs(git({ "diff", "--name-only", "--diff-filter=U" }) or {}) do
     if rel ~= "" then
-      entries[#entries + 1] = { path = rel, count = count_conflicts(root .. "/" .. rel) }
+      entries[#entries + 1] = {
+        path = rel,
+        count = count_conflicts(root .. "/" .. rel),
+        deleted = deleted_by(stages[rel]),
+      }
     end
   end
   return root, entries
+end
+
+--- For a modify/delete conflict on `abs`: the side that deleted it, and the
+--- merge base the surviving side is measured against.
+local function modify_delete(abs)
+  if abs == "" then return end
+  -- --show-prefix rather than trimming the root off `abs`: the two disagree as
+  -- soon as anything in the path is a symlink.
+  local dir = vim.fn.fnamemodify(abs, ":h")
+  local out = git({ "-C", dir, "rev-parse", "--show-toplevel", "--show-prefix" })
+  if not (out and out[1]) then return end
+  local root, rel = out[1], (out[2] or "") .. vim.fn.fnamemodify(abs, ":t")
+  local gone = deleted_by(unmerged_stages(root)[rel])
+  if not gone then return end
+  return gone, git({ "-C", root, "show", ":1:" .. rel })
 end
 
 -- Merge-tool panes ------------------------------------------------------------
@@ -185,6 +228,34 @@ local function style_panes()
       if order[i] == result then merged = mr.attach(api.nvim_win_get_buf(win)) end
     end
 
+    -- Modify/delete: one side deleted the file, so there are no markers to
+    -- collapse and vim's diff marks the whole surviving file as new. Keep that
+    -- as the bottom layer and paint what the survivor changed since the base
+    -- over it -- the part you may have to port to wherever the file went.
+    if not merged and #wins == 3 then
+      local result_buf
+      for i, win in ipairs(wins) do
+        if order[i] == result then result_buf = api.nvim_win_get_buf(win) end
+      end
+      local gone, base = modify_delete(result_buf and api.nvim_buf_get_name(result_buf) or "")
+      if gone and base then
+        local keep = gone == "ours" and theirs or ours
+        local lost = gone == "ours" and ours or theirs
+        for i, win in ipairs(wins) do
+          if order[i] == keep then
+            local n = mr.paint_survivor(api.nvim_win_get_buf(win), base, keep.side)
+            -- It paints both layers itself; vim's diff colours would cover them.
+            keep.painted = true
+            keep.title = keep.title .. (n == 0 and " · unchanged since the base"
+              or (" · %d line%s changed since the base"):format(n, n == 1 and "" or "s"))
+            -- Gutter carries the +/~/_ marks; "auto" hides them without signs.
+            vim.wo[win].signcolumn = "yes:1"
+          end
+        end
+        lost.title = lost.title .. " · DELETED the file"
+      end
+    end
+
     for i, win in ipairs(wins) do
       local spec = order[i]
       local buf = api.nvim_win_get_buf(win)
@@ -198,7 +269,7 @@ local function style_panes()
         -- The block brackets live in the gutter; "auto" would hide them the
         -- moment a file has no other signs.
         vim.wo[win].signcolumn = "yes:1"
-      elseif merged and spec.side and mr.paint_side(buf, spec.side) then
+      elseif spec.painted or (merged and spec.side and mr.paint_side(buf, spec.side)) then
         body, text = "MergeResultPlain", "MergeResultPlain"
       end
 
@@ -277,15 +348,18 @@ local function render()
   marks[#marks + 1] = { 0, 0, -1, "MergeConflictsTitle" }
 
   for i, e in ipairs(entries) do
-    local icon  = e.count > 0 and "●" or "✓"
-    local count = e.count > 0 and tostring(e.count) or "-"
+    -- A modify/delete path has no markers, so a count of 0 would read as done;
+    -- it still waits on `git add` (keep) or `git rm` (delete).
+    local open = e.count > 0 or e.deleted ~= nil
+    local icon  = open and "●" or "✓"
+    local count = e.count > 0 and tostring(e.count) or (e.deleted and "del" or "-")
     local prefix = "  " .. icon .. " " .. count .. string.rep(" ", math.max(1, 4 - #count))
     lines[i + 1] = prefix .. e.path
 
     local row = i
     marks[#marks + 1] = {
       row, 2, 2 + #icon + 1 + #count,
-      e.count > 0 and "MergeConflictsCount" or "MergeConflictsDone",
+      open and "MergeConflictsCount" or "MergeConflictsDone",
     }
     local dir = e.path:match("^(.*/)")
     local name_col = #prefix + (dir and #dir or 0)
