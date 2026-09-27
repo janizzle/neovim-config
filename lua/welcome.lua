@@ -84,6 +84,7 @@ local sections = {
     row("<space>q",    "Force close",     "<space>X",    "Close, discard"),
     row("Shift-h/l",   "Prev / next tab", "<space>l",    "Restore layout"),
     row("<space>w1-9", "Jump to window",  "<space>t1-9", "Jump to buffer tab"),
+    note("<space>l restores the layout from anywhere: closes every diff, keeps your file"),
     row(":qa",         "Quit all"),
   }},
 
@@ -124,10 +125,14 @@ local sections = {
   }},
 
   { "Diff & merge", {
-    row("<space>ds", "This file vs HEAD", "<space>dv", "All changes"),
-    row("<space>dc", "Last commit",       "<space>dh", "File history"),
-    row("<space>dH", "Repo history",      "<space>dx", "Conflicts (qf)"),
-    row("<space>dm", "Merge workspace",   "<space>dq", "Close any diff"),
+    row("<space>dd", "Review changes",    "<space>ds", "This file vs HEAD"),
+    row("<space>dv", "All changes",       "<space>dc", "Last commit"),
+    row("<space>dh", "File history",      "<space>dH", "Repo history"),
+    row("<space>dm", "Merge workspace",   "<space>dx", "Conflicts (qf)"),
+    row("<space>dq", "Close any diff",    "<space>l",  "Restore layout"),
+    "",
+    note("in <space>dd: tree of changes · left = yours · right = HEAD"),
+    row("Tab S-Tab", "Next / prev file",  "]c [c",     "Next / prev hunk"),
     "",
     note("in <space>dm: red = conflict · blue = ours · purple = theirs"),
     row("ct",     "Take theirs",  "co",     "Take ours"),

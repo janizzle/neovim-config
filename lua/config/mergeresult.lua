@@ -515,11 +515,16 @@ function M.attach(buf)
   end
 
   local was_modifiable = vim.bo[buf].modifiable
+  local was_modified = vim.bo[buf].modified
   vim.bo[buf].modifiable = true
   api.nvim_buf_set_lines(buf, 0, -1, false, result)
   vim.bo[buf].modifiable = was_modifiable
 
-  state[buf] = { original = lines, regions = regions, base = read_base(buf) }
+  state[buf] = {
+    original = lines, regions = regions, base = read_base(buf),
+    -- For detach(): whether anything happened after the collapse.
+    tick = api.nvim_buf_get_changedtick(buf), was_modified = was_modified,
+  }
   for _, region in ipairs(regions) do
     region.len = #region.ours
     place(buf, region)
@@ -551,6 +556,73 @@ function M.unresolved(buf)
 end
 
 function M.attached(buf) return state[buf] ~= nil end
+
+local KEYS = { "ct", "co", "cb", "c0", "cB", "cn", "cp" }
+
+--- Leave the merge view for good: the buffer goes back to being a plain file.
+---
+--- Untouched since the collapse, it gets its original text back exactly (and
+--- stops counting as modified if it wasn't before). Otherwise your decisions
+--- stay, and every block still undecided is written back out as git's markers
+--- -- so an open conflict never quietly turns into OURS just because the view
+--- went away, and git-conflict.nvim picks it up again inline.
+function M.detach(buf)
+  local st = state[buf]
+  if not st then return false end
+
+  if api.nvim_buf_get_changedtick(buf) == st.tick then
+    M.revert(buf)
+    if not st.was_modified then vim.bo[buf].modified = false end
+  else
+    local open = {}
+    for _, region in ipairs(st.regions) do
+      if not region.resolved then
+        local s, e = range(buf, region)
+        if s then open[#open + 1] = { s = s, e = e, region = region } end
+      end
+    end
+    -- Bottom-up, so rewriting one block never shifts the rows of the next.
+    table.sort(open, function(a, b) return a.s > b.s end)
+
+    vim.bo[buf].modifiable = true
+    for _, o in ipairs(open) do
+      local r = o.region
+      local text = { "<<<<<<< " .. labels.ours }
+      vim.list_extend(text, r.ours)
+      if r.base then
+        text[#text + 1] = "|||||||"
+        vim.list_extend(text, r.base)
+      end
+      text[#text + 1] = "======="
+      vim.list_extend(text, r.theirs)
+      text[#text + 1] = ">>>>>>> " .. labels.theirs
+      api.nvim_buf_set_lines(buf, o.s, o.e, false, text)
+    end
+
+    api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+    api.nvim_buf_clear_namespace(buf, sign_ns, 0, -1)
+    state[buf] = nil
+    vim.b[buf].merge_result = nil
+    pcall(function() require("gitsigns").attach(buf) end)
+  end
+
+  for _, lhs in ipairs(KEYS) do pcall(vim.keymap.del, "n", lhs, { buffer = buf }) end
+  vim.b[buf].merge_result_refused = nil
+  return true
+end
+
+--- detach() every buffer, and wipe the side-pane paint wherever it is left.
+function M.detach_all()
+  for buf in pairs(state) do
+    if api.nvim_buf_is_valid(buf) then M.detach(buf) else state[buf] = nil end
+  end
+  for _, buf in ipairs(api.nvim_list_bufs()) do
+    if api.nvim_buf_is_valid(buf) then
+      api.nvim_buf_clear_namespace(buf, origin_ns, 0, -1)
+    end
+  end
+  M.release_gitsigns()
+end
 
 --- Restore the original marker text.
 function M.revert(buf)

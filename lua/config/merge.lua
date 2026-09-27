@@ -605,7 +605,9 @@ api.nvim_create_autocmd("User", {
   pattern = "DiffviewViewClosed",
   callback = function()
     M.close_panel()
-    require("config.mergeresult").release_gitsigns()
+    -- The result buffer is the real file: hand it back plain, with any block
+    -- still undecided written out as git's markers again.
+    require("config.mergeresult").detach_all()
   end,
 })
 

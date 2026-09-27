@@ -40,8 +40,27 @@ vim.keymap.set("n", "<leader>X", function() smart_close(true) end, { desc = "For
 -- Windows & buffer tabs by number ---------------------------------------------
 
 -- <leader>w1..9: windows numbered top-left -> bottom-right (1 = tree, 2 = editor).
+-- The one exception is diffview's history list, which sits along the bottom:
+-- it is still window 1, so w1 is the list in every view.
+local function numbered_windows()
+  local wins, list = {}, {}
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    if vim.api.nvim_win_get_config(win).relative == "" then   -- skip floats
+      if vim.bo[vim.api.nvim_win_get_buf(win)].filetype == "DiffviewFileHistory" then
+        list[#list + 1] = win
+      else
+        wins[#wins + 1] = win
+      end
+    end
+  end
+  return vim.list_extend(list, wins)
+end
+
 for i = 1, 9 do
-  vim.keymap.set("n", "<leader>w" .. i, i .. "<C-w>w", { desc = "Go to window " .. i })
+  vim.keymap.set("n", "<leader>w" .. i, function()
+    local win = numbered_windows()[i]
+    if win then vim.api.nvim_set_current_win(win) end
+  end, { desc = "Go to window " .. i })
 end
 
 -- <leader>t1..9: Nth bufferline tab, left -> right.
@@ -58,6 +77,11 @@ end
 vim.keymap.set("n", "<leader>ds", function() require("config.sidediff").toggle() end,
   { desc = "Diff: this file vs HEAD, side by side (toggle)" })
 
+-- Every change since HEAD: tree of changed files on the left, then your
+-- working copy | the committed file. See config/review.lua.
+vim.keymap.set("n", "<leader>dd", function() require("config.review").open() end,
+  { desc = "Diff: review changes (working tree | HEAD)" })
+
 -- Diffview always opens in its own tabpage; <leader>dq is the way back out.
 vim.keymap.set("n", "<leader>dv", "<cmd>DiffviewOpen<cr>",          { desc = "Diff: working changes" })
 vim.keymap.set("n", "<leader>dc", "<cmd>DiffviewOpen HEAD~1<cr>",   { desc = "Diff: last commit" })
@@ -68,31 +92,10 @@ vim.keymap.set("n", "<leader>dH", "<cmd>DiffviewFileHistory<cr>",   { desc = "Di
 -- THEIRS side by side. See config/merge.lua.
 vim.keymap.set("n", "<leader>dm", "<cmd>Merge<cr>", { desc = "Merge: resolve conflicts (diffview)" })
 
--- Close Diffview, close any tabpage that is purely diff windows, and clear
--- diff-mode leftovers (diff turns on scrollbind).
-local function diff_close()
-  pcall(function() require("config.merge").close_panel() end)
-  pcall(function() require("config.sidediff").close() end)
-  pcall(vim.cmd, "DiffviewClose")
-  for _, tab in ipairs(vim.api.nvim_list_tabpages()) do
-    if vim.api.nvim_tabpage_is_valid(tab) then
-      local only_diff = true
-      for _, win in ipairs(vim.api.nvim_tabpage_list_wins(tab)) do
-        local buf = vim.api.nvim_win_get_buf(win)
-        local ft = vim.bo[buf].filetype
-        local is_diff = vim.wo[win].diff
-          or ft == "DiffviewFiles" or ft == "DiffviewFileHistory"
-          or ft == "MergeConflicts"
-        if not is_diff then only_diff = false break end
-      end
-      if only_diff and #vim.api.nvim_list_tabpages() > 1 then
-        pcall(vim.cmd, tab .. "tabclose")
-      end
-    end
-  end
-  pcall(function() require("config.blame").unbind_all() end)
-end
-vim.keymap.set("n", "<leader>dq", diff_close, { desc = "Diff: close (+ kill stray diff tab)" })
+-- Same as <leader>l: close every diff view and go home with the file you
+-- were on open as a plain file. See config/layout.lua.
+vim.keymap.set("n", "<leader>dq", function() require("config.layout").home() end,
+  { desc = "Diff: close all diff views (= restore layout, <leader>l)" })
 
 -- Inline conflicts: git-conflict provides co/ct/cb/c0 + cn/cp in the buffer.
 vim.keymap.set("n", "<leader>dx", "<cmd>GitConflictListQf<cr>", { desc = "Merge: list all conflicts (quickfix)" })
