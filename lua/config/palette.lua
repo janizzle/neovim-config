@@ -22,6 +22,8 @@ return {
   purple      = "#C678DD",
   green       = "#98C379",
   red         = "#E06C75",
+  claude      = "#F0883E",   -- Claude notifications: bright orange, distinct from the keyword orange
+  unused      = "#6E767E",   -- unused variables / imports: dimmed grey
 
   -- Syntax --------------------------------------------------------------------
   comment      = "#629755",  -- green italic

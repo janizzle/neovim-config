@@ -45,6 +45,12 @@ local function improve_ui_colors()
   hl(0, "PmenuSbar",     { bg = C.bg_alt })
   hl(0, "PmenuThumb",    { bg = mag })
 
+  -- Unused variables / imports (LSP "unnecessary" tag): darcula links this to
+  -- Comment, which is green. Grey them out but keep the squiggle and the
+  -- virtual text, which come from the DiagnosticUnderline*/VirtualText groups.
+  hl(0, "DiagnosticUnnecessary",   { fg = C.unused })
+  hl(0, "DiagnosticUnderlineHint", { undercurl = true, sp = C.unused })
+
   -- Gutter.
   hl(0, "CursorLineNr",  { fg = purple, bold = true })
   hl(0, "SignColumn",    { bg = "NONE" })

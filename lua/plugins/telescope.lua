@@ -183,17 +183,54 @@ return {
     -- Published for lsp.lua's `gr`, so it reuses the same routing.
     require("config.picker").open_in_main = with_action(open_in_main)
 
+    -- Project searches skip reports/, test/ and tests/ at any depth (generated
+    -- output / test fixtures bury real hits). Lua patterns against the
+    -- cwd-relative path; the "%./" twin covers pickers that emit a leading
+    -- "./". <leader>ft and <leader>fT search those test dirs on purpose.
+    local skip = {}
+    for _, d in ipairs({ "reports", "test", "tests" }) do
+      vim.list_extend(skip, { "^" .. d .. "/", "^%./" .. d .. "/", "/" .. d .. "/" })
+    end
+    local test_globs = { "**/test/**", "**/tests/**" }
+
     vim.keymap.set("n", "<leader>ff", function()
-      builtin.find_files({ attach_mappings = with_action(open_in_main) })
+      builtin.find_files({
+        file_ignore_patterns = skip,
+        attach_mappings = with_action(open_in_main),
+      })
     end, { desc = "Find files" })
 
     vim.keymap.set("n", "<leader>fg", function()
-      builtin.live_grep({ attach_mappings = with_action(open_in_main) })
+      builtin.live_grep({
+        file_ignore_patterns = skip,
+        attach_mappings = with_action(open_in_main),
+      })
     end, { desc = "Live grep" })
 
     vim.keymap.set("n", "<leader>fw", function()
-      builtin.grep_string({ attach_mappings = with_action(open_in_main) })
+      builtin.grep_string({
+        file_ignore_patterns = skip,
+        attach_mappings = with_action(open_in_main),
+      })
     end, { desc = "Grep word under cursor" })
+
+    vim.keymap.set("n", "<leader>ft", function()
+      local cmd = { "rg", "--files", "--color=never" }
+      for _, g in ipairs(test_globs) do vim.list_extend(cmd, { "--glob", g }) end
+      builtin.find_files({
+        find_command = cmd,
+        prompt_title = "Find Test Files",
+        attach_mappings = with_action(open_in_main),
+      })
+    end, { desc = "Find test files (test/, tests/)" })
+
+    vim.keymap.set("n", "<leader>fT", function()
+      builtin.live_grep({
+        glob_pattern = test_globs,
+        prompt_title = "Grep Tests",
+        attach_mappings = with_action(open_in_main),
+      })
+    end, { desc = "Grep in tests (test/, tests/)" })
 
     -- Every knob pinned to a fixed, predictable view: all real file buffers,
     -- current one included, stable order (the defaults hide/sort-by-MRU,

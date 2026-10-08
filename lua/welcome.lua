@@ -23,25 +23,37 @@ local function pad(s, w)
   return s .. string.rep(" ", math.max(1, w - vim.fn.strdisplaywidth(s)))
 end
 
+-- Each builder returns { text = <line>, marks = { {from, to, group}, ... } }
+-- with byte offsets, so the colours are computed from the same pieces the
+-- columns are, and can't drift away from them.
+local function line(text, marks) return { text = text, marks = marks or {} } end
+
 --- One or two `key -- what it does` cells on a line.
 local function row(k1, d1, k2, d2)
   local left = pad(k1, KEY_W) .. d1
-  if not k2 then return INDENT .. left end
-  return INDENT .. pad(left, COL_W) .. pad(k2, KEY_W) .. d2
+  local marks = { { #INDENT, #INDENT + #k1, "WelcomeKey" } }
+  if not k2 then return line(INDENT .. left, marks) end
+  local col2 = #INDENT + #pad(left, COL_W)
+  marks[2] = { col2, col2 + #k2, "WelcomeKey" }
+  return line(INDENT .. pad(left, COL_W) .. pad(k2, KEY_W) .. d2, marks)
 end
 
 --- A `:command -- what it does` line, for the sections that are commands
 --- rather than keys.
 local function cmd(name, desc)
-  return INDENT .. pad(name, CMD_W) .. desc
+  return line(INDENT .. pad(name, CMD_W) .. desc, { { #INDENT, #INDENT + #name, "WelcomeKey" } })
 end
+
+--- A small label inside a section ("in the review view: ...").
+local function sub(text)
+  return line(INDENT .. text, { { #INDENT, #INDENT + #text, "WelcomeSub" } })
+end
+
+local BLANK = line("")
 
 local function head(title)
-  return HEAD .. "── " .. title .. " " .. string.rep("─", math.max(3, WIDTH - #title - 4))
-end
-
-local function note(text)
-  return INDENT .. "  " .. text
+  local text = HEAD .. "── " .. title .. " " .. string.rep("─", math.max(3, WIDTH - #title - 4))
+  return line(text, { { #HEAD, #text, "WelcomeRule" }, { #HEAD + #"── ", #HEAD + #"── " + #title, "WelcomeHead" } })
 end
 
 -- Content ---------------------------------------------------------------------
@@ -74,9 +86,17 @@ local sections = {
   { "Files & search", {
     row("<space>ff", "Find files",        "<space>fg", "Live grep"),
     row("<space>fw", "Grep word",         "<space>fb", "Switch buffers"),
-    row("<space>fd", "Find directory",    "<space>fh", "Help tags"),
     row("<space>fs", "File symbols",      "<space>fS", "Project symbols"),
-    row("<space>fe", "Diagnostics"),
+    row("<space>fd", "Find directory",    "<space>fe", "Diagnostics"),
+    row("<space>ft", "Test files",        "<space>fT", "Grep tests"),
+    row("<space>fh", "Help tags"),
+  }},
+
+  { "Claude", {
+    row("<space>cc", "Session list",      "<cr> 1-9",  "Open session"),
+    row("a",         "Answer",            "r",         "Refresh"),
+    row("N",         "Pick menu option N","N text",    "Pick N, then type text"),
+    row("q",         "Close"),
   }},
 
   { "Buffers & windows", {
@@ -84,7 +104,6 @@ local sections = {
     row("<space>q",    "Force close",     "<space>X",    "Close, discard"),
     row("Shift-h/l",   "Prev / next tab", "<space>l",    "Restore layout"),
     row("<space>w1-9", "Jump to window",  "<space>t1-9", "Jump to buffer tab"),
-    note("<space>l restores the layout from anywhere: closes every diff, keeps your file"),
     row(":qa",         "Quit all"),
   }},
 
@@ -130,11 +149,11 @@ local sections = {
     row("<space>dh", "File history",      "<space>dH", "Repo history"),
     row("<space>dm", "Merge workspace",   "<space>dx", "Conflicts (qf)"),
     row("<space>dq", "Close any diff",    "<space>l",  "Restore layout"),
-    "",
-    note("in <space>dd: tree of changes · left = yours · right = HEAD"),
+    BLANK,
+    sub("In review (dd)"),
     row("Tab S-Tab", "Next / prev file",  "]c [c",     "Next / prev hunk"),
-    "",
-    note("in <space>dm: red = conflict · blue = ours · purple = theirs"),
+    BLANK,
+    sub("In merge (dm)"),
     row("ct",     "Take theirs",  "co",     "Take ours"),
     row("cb",     "Take both",    "cB",     "Take base"),
     row("c0",     "Drop block",   "cn cp",  "Next / prev block"),
@@ -169,12 +188,38 @@ local sections = {
   }},
 }
 
-local lines = vim.deepcopy(banner)
-for _, section in ipairs(sections) do
-  lines[#lines + 1] = head(section[1])
-  lines[#lines + 1] = ""
-  vim.list_extend(lines, section[2])
-  lines[#lines + 1] = ""
+-- Section accents, cycled in order; Claude keeps its own orange.
+local accents = { "blue", "green", "purple", "number", "red", "tag" }
+
+local lines, marks = {}, {}
+local function emit(item)
+  lines[#lines + 1] = item.text
+  marks[#lines] = item.marks
+end
+for _, text in ipairs(banner) do
+  lines[#lines + 1] = text
+  marks[#lines] = { { 0, #text, "WelcomeBanner" } }
+end
+for i, section in ipairs(sections) do
+  local h = head(section[1])
+  h.marks[2][3] = section[1] == "Claude" and "WelcomeHeadClaude" or ("WelcomeHead" .. accents[(i - 1) % #accents + 1])
+  emit(h)
+  emit(BLANK)
+  for _, item in ipairs(section[2]) do emit(item) end
+  emit(BLANK)
+end
+
+local function define_highlights()
+  local C = require("config.palette")
+  local set = function(n, o) vim.api.nvim_set_hl(0, n, o) end
+  set("WelcomeBanner", { fg = C.blue })
+  set("WelcomeRule", { fg = C.line_nr })
+  set("WelcomeKey", { fg = C.tag })
+  set("WelcomeSub", { fg = C.unused, italic = true })
+  set("WelcomeHeadClaude", { fg = C.claude, bold = true })
+  for _, name in ipairs(accents) do
+    set("WelcomeHead" .. name, { fg = C[name] or C.blue, bold = true })
+  end
 end
 
 --- Paint the welcome screen into an empty, unnamed scratch buffer.
@@ -188,6 +233,13 @@ function M.paint(buf)
   if first ~= "" then return end
 
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  define_highlights()
+  local ns = vim.api.nvim_create_namespace("welcome")
+  for l, ms in pairs(marks) do
+    for _, m in ipairs(ms) do
+      vim.api.nvim_buf_set_extmark(buf, ns, l - 1, m[1], { end_col = m[2], hl_group = m[3] })
+    end
+  end
   vim.bo[buf].modified = false
   -- Read by bufferline/lualine to label this buffer "Welcome". A buffer
   -- variable, not a :file name -- a real name would make :update try to

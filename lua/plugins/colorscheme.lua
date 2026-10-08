@@ -87,6 +87,17 @@ return {
       hl(0, "@type.builtin",         { fg = C.type_builtin, bold = true })
       hl(0, "@type.definition",      { fg = C.type_color, bold = true })
       hl(0, "@tag",                  { fg = C.tag })
+      -- JSX/TSX markup colored like HTML in Twig: tag names yellow, props
+      -- grey, text plain. The jsx queries use the .builtin / .attribute
+      -- variants, which the theme would otherwise leave on its own colors.
+      hl(0, "@tag.builtin",          { fg = C.tag })
+      hl(0, "@tag.javascript",       { fg = C.tag })
+      hl(0, "@tag.tsx",              { fg = C.tag })
+      hl(0, "@tag.attribute.javascript", { fg = C.attribute })
+      hl(0, "@tag.attribute.tsx",    { fg = C.attribute })
+      hl(0, "@tag.delimiter.javascript", { fg = C.fg })
+      hl(0, "@tag.delimiter.tsx",    { fg = C.fg })
+      hl(0, "@string.jsx",           { fg = C.string })
       hl(0, "@tag.attribute",        { fg = C.attribute })
       hl(0, "@tag.delimiter",        { fg = C.fg })
       hl(0, "@attribute",            { fg = C.annotation })
