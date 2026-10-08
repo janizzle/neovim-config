@@ -8,6 +8,7 @@
 --   answer "2"          -> picks menu option 2
 --   answer "2 some text" -> picks option 2, then types "some text" + Enter
 --   answer "some text"  -> types it + Enter
+--   multi-select menu:   "1,3" / "1 3" -> checks those boxes, then Submit
 
 local C = require("config.palette")
 
@@ -101,9 +102,11 @@ local function layout_toasts()
   end
 end
 
-local function toast(text, ms, hl)
+-- bot = { name = "Claude Azure", num = 1 }: colours that name inside the toast
+local function toast(text, ms, hl, bot)
   hl = hl or "ClaudeToast"
-  local line = " " .. icon .. "  " .. text .. " "
+  local prefix = " " .. icon .. "  "
+  local line = prefix .. text .. " "
   local width = vim.fn.strdisplaywidth(line)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, { line })
@@ -113,6 +116,9 @@ local function toast(text, ms, hl)
     focusable = false, zindex = 250, noautocmd = true,
   })
   vim.wo[win].winhighlight = "NormalFloat:" .. hl .. ",FloatBorder:" .. hl .. "Border"
+  if bot and text:sub(1, #bot.name) == bot.name then
+    vim.api.nvim_buf_add_highlight(buf, -1, "ClaudeBot" .. bot.num, 0, #prefix, #prefix + #bot.name)
+  end
   local t = { win = win, width = width }
   table.insert(toasts, t)
   layout_toasts()
@@ -140,7 +146,9 @@ end
 local function add(pane, name, kind, msg)
   drop(pane)
   table.insert(M.items, { pane = pane, name = name, kind = kind, msg = msg })
-  toast(name .. " " .. msg, cfg.toast_ms[kind] or 6000)
+  local n = bot_num(pane)
+  toast(name .. " " .. msg, cfg.toast_ms[kind] or 6000, nil,
+    { name = "Claude " .. cfg.bot_names[n], num = n })
 end
 
 -- Scanning --------------------------------------------------------------------
@@ -207,7 +215,75 @@ local function send(pane, ...)
   vim.system(vim.list_extend({ "tmux", "send-keys", "-t", pane }, { ... })):wait()
 end
 
+-- Reads the on-screen menu. Returns nil unless it is a multi-select (numbered
+-- rows with a "[ ]" / "[✔]" box). Rows are in screen order: the options, then
+-- the bare "Submit" row below them.
+local function multi_menu(pane)
+  local out = vim.fn.system({ "tmux", "capture-pane", "-p", "-t", pane })
+  local lines = vim.split(out, "\n", { trimempty = true })
+  local rows, boxes = {}, 0
+  for i = math.max(1, #lines - 29), #lines do
+    -- "❯" is multi-byte, so it is stripped as a plain prefix, not a char class
+    local cursor = lines[i]:match("^%s*❯") ~= nil
+    local body = lines[i]:gsub("^%s*", ""):gsub("^❯%s*", "")
+    local num, rest = body:match("^(%d+)%.%s+(.*)$")
+    if num then
+      local box = rest:match("^%[(.-)%]")
+      if box then boxes = boxes + 1 end
+      rows[#rows + 1] = {
+        num = tonumber(num), cursor = cursor, checked = box ~= nil and box ~= " ",
+        other = rest:find("Type something", 1, true) ~= nil, box = box ~= nil,
+      }
+    elseif body == "Submit" or body == "Next" then
+      rows[#rows + 1] = { cursor = cursor, submit = true }
+    end
+  end
+  if boxes == 0 then return nil end
+  return { rows = rows }
+end
+
+-- "1,3" checks options 1 and 3 (and unchecks any other ticked box); "1,3 some
+-- text" also types the text into the "Type something" row. Then Submit + Enter.
+local function answer_multi(pane, menu, ans)
+  local want, text = {}, nil
+  local words = vim.split(vim.trim(ans), "[%s,]+", { trimempty = true })
+  for i, w in ipairs(words) do
+    if w:match("^%d+$") then want[tonumber(w)] = true
+    else text = table.concat(words, " ", i); break end
+  end
+  local at = 1
+  for i, r in ipairs(menu.rows) do if r.cursor then at = i end end
+  local steps = {} -- { "Down" | "Up" | "Space" | { "-l", text } }
+  local function goto_row(to)
+    while at < to do steps[#steps + 1] = "Down"; at = at + 1 end
+    while at > to do steps[#steps + 1] = "Up"; at = at - 1 end
+  end
+  for i, r in ipairs(menu.rows) do
+    if r.box and not r.other and (want[r.num] or false) ~= r.checked then
+      goto_row(i); steps[#steps + 1] = "Space"
+    elseif r.other and text then
+      goto_row(i); steps[#steps + 1] = { "-l", text }
+    end
+  end
+  for i, r in ipairs(menu.rows) do if r.submit then goto_row(i) end end
+  steps[#steps + 1] = "Enter"
+  -- one tmux call, commands chained with ";", so nothing blocks Neovim
+  local args = { "tmux" }
+  for i, st in ipairs(steps) do
+    if i > 1 then args[#args + 1] = ";" end
+    vim.list_extend(args, { "send-keys", "-t", pane })
+    vim.list_extend(args, type(st) == "table" and st or { st })
+  end
+  vim.system(args)
+end
+
 local function answer(pane, ans)
+  local menu = multi_menu(pane)
+  if menu then
+    answer_multi(pane, menu, ans)
+    drop(pane)
+    return vim.schedule(function() toast("Sent", 2500, "ClaudeToastSent") end)
+  end
   local num, text = ans:match("^(%d%d?)%s+(.+)$")
   if num then
     send(pane, num)                       -- select the menu option ...
@@ -222,7 +298,8 @@ local function answer(pane, ans)
     send(pane, "Enter")                   -- text answer / accept default
   end
   drop(pane)
-  toast("Sent", 2500, "ClaudeToastSent")
+  -- scheduled so it opens after the cmdline prompt has fully closed
+  vim.schedule(function() toast("Sent", 2500, "ClaudeToastSent") end)
 end
 
 function M.open(it)
@@ -274,11 +351,21 @@ function M.open(it)
     -- The cmdline prompt takes its colour from :echohl, so the bot's own
     -- colour marks where you are typing.
     vim.cmd("echohl ClaudeBot" .. n)
-    vim.ui.input({ prompt = it.name .. " (N, N text, or text) > " }, function(ans)
+    vim.ui.input({ prompt = it.name .. " (N, 1,3 for multi, N text, or text) > " }, function(ans)
       vim.cmd("echohl None")
       if ans == nil then return end -- cancelled
-      answer(it.pane, ans)
-      if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
+      local ok, err = pcall(answer, it.pane, ans)
+      if not ok then vim.notify("Claude inbox: " .. tostring(err), vim.log.levels.ERROR) end
+      -- next tab / next question? then stay open, otherwise close
+      vim.defer_fn(function()
+        if not vim.api.nvim_win_is_valid(win) then return end
+        local out = vim.fn.system({ "tmux", "capture-pane", "-p", "-t", it.pane })
+        if vim.v.shell_error == 0 and classify(out) == "question" then
+          refresh(); vim.cmd("normal! G")
+        else
+          vim.api.nvim_win_close(win, true)
+        end
+      end, 700)
     end)
   end)
 end
