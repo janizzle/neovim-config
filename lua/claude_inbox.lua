@@ -132,8 +132,6 @@ end
 local function define_highlights()
   vim.api.nvim_set_hl(0, "ClaudeToast", { fg = C.claude, bg = C.bg_alt, bold = true })
   vim.api.nvim_set_hl(0, "ClaudeToastBorder", { fg = C.claude, bg = C.bg_alt })
-  vim.api.nvim_set_hl(0, "ClaudeToastSent", { fg = C.green, bg = C.bg_alt, bold = true })
-  vim.api.nvim_set_hl(0, "ClaudeToastSentBorder", { fg = C.green, bg = C.bg_alt })
   vim.api.nvim_set_hl(0, "ClaudeStatusQuestion", { fg = C.claude, bold = true })
   vim.api.nvim_set_hl(0, "ClaudeStatusDone", { fg = C.green })
   vim.api.nvim_set_hl(0, "ClaudeStatusBusy", { fg = C.blue })
@@ -277,12 +275,17 @@ local function answer_multi(pane, menu, ans)
   vim.system(args)
 end
 
+-- "Sent" goes in the command line, in green (scheduled so the prompt has closed)
+local function sent_echo()
+  vim.api.nvim_echo({ { "Sent", "ClaudeStatusDone" } }, false, {})
+end
+
 local function answer(pane, ans)
   local menu = multi_menu(pane)
   if menu then
     answer_multi(pane, menu, ans)
     drop(pane)
-    return vim.schedule(function() toast("Sent", 2500, "ClaudeToastSent") end)
+    return vim.schedule(sent_echo)
   end
   local num, text = ans:match("^(%d%d?)%s+(.+)$")
   if num then
@@ -299,7 +302,7 @@ local function answer(pane, ans)
   end
   drop(pane)
   -- scheduled so it opens after the cmdline prompt has fully closed
-  vim.schedule(function() toast("Sent", 2500, "ClaudeToastSent") end)
+  vim.schedule(sent_echo)
 end
 
 function M.open(it)
