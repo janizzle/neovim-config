@@ -28,13 +28,21 @@ end
 -- columns are, and can't drift away from them.
 local function line(text, marks) return { text = text, marks = marks or {} } end
 
+--- Marks for one key cell: the "<space>" prefix is dimmed so the part that
+--- actually differs between keys is what stands out.
+local function keymarks(marks, at, k)
+  local lead = k:match("^<space>") and #"<space>" or 0
+  if lead > 0 then marks[#marks + 1] = { at, at + lead, "WelcomeLeader" } end
+  marks[#marks + 1] = { at + lead, at + #k, "WelcomeKey" }
+end
+
 --- One or two `key -- what it does` cells on a line.
 local function row(k1, d1, k2, d2)
   local left = pad(k1, KEY_W) .. d1
-  local marks = { { #INDENT, #INDENT + #k1, "WelcomeKey" } }
+  local marks = {}
+  keymarks(marks, #INDENT, k1)
   if not k2 then return line(INDENT .. left, marks) end
-  local col2 = #INDENT + #pad(left, COL_W)
-  marks[2] = { col2, col2 + #k2, "WelcomeKey" }
+  keymarks(marks, #INDENT + #pad(left, COL_W), k2)
   return line(INDENT .. pad(left, COL_W) .. pad(k2, KEY_W) .. d2, marks)
 end
 
@@ -94,9 +102,10 @@ local sections = {
 
   { "Claude", {
     row("<space>cc", "Session list",      "<cr> 1-9",  "Open session"),
-    row("a",         "Answer",            "r",         "Refresh"),
-    row("N",         "Pick menu option N","N text",    "Pick N, then type text"),
-    row("q",         "Close"),
+    row("d",         "Change directory", "q",       "Close list"),
+    BLANK,
+    sub("In an open session (type straight into Claude)"),
+    row("<C-q>",     "Close, keeps running"),
   }},
 
   { "Buffers & windows", {
@@ -198,7 +207,17 @@ local function emit(item)
 end
 for _, text in ipairs(banner) do
   lines[#lines + 1] = text
-  marks[#lines] = { { 0, #text, "WelcomeBanner" } }
+  -- Diamond green, "Vim" and "Neo" (first 29 columns) strokes greyish white.
+  local m, pos, col = {}, 0, 0
+  for ch in text:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
+    if ch ~= " " then
+      local g = ch == "░" and "WelcomeBannerDiamond" or (col < 29 and "WelcomeBannerNeo" or "WelcomeBannerVim")
+      m[#m + 1] = { pos, pos + #ch, g }
+    end
+    pos = pos + #ch
+    col = col + 1
+  end
+  marks[#lines] = m
 end
 for i, section in ipairs(sections) do
   local h = head(section[1])
@@ -212,7 +231,10 @@ end
 local function define_highlights()
   local C = require("config.palette")
   local set = function(n, o) vim.api.nvim_set_hl(0, n, o) end
-  set("WelcomeBanner", { fg = C.blue })
+  set("WelcomeBannerDiamond", { fg = "#019833" }) -- Vim logo green
+  set("WelcomeBannerVim", { fg = "#C4C7CC" })
+  set("WelcomeBannerNeo", { fg = "#C4C7CC" })
+  set("WelcomeLeader", { fg = C.line_nr })
   set("WelcomeRule", { fg = C.line_nr })
   set("WelcomeKey", { fg = C.tag })
   set("WelcomeSub", { fg = C.unused, italic = true })

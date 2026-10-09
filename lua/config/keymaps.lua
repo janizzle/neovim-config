@@ -107,3 +107,14 @@ vim.keymap.set("t", "<C-w>h", [[<C-\><C-n><C-w>h]], { desc = "Terminal → left 
 vim.keymap.set("t", "<C-w>j", [[<C-\><C-n><C-w>j]], { desc = "Terminal → down window" })
 vim.keymap.set("t", "<C-w>k", [[<C-\><C-n><C-w>k]], { desc = "Terminal → up window" })
 vim.keymap.set("t", "<C-w>l", [[<C-\><C-n><C-w>l]], { desc = "Terminal → right window" })
+
+-- :terminal opens in a split at the bottom instead of taking over the window.
+vim.api.nvim_create_user_command("Term", function(o)
+  vim.cmd("botright 15split")
+  vim.cmd("terminal " .. o.args)
+  vim.cmd("startinsert")
+end, { nargs = "*", complete = "shellcmd", desc = ":terminal in a bottom split" })
+
+for _, name in ipairs({ "terminal", "term" }) do
+  vim.cmd(([[cnoreabbrev <expr> %s (getcmdtype() == ':' && getcmdline() ==# '%s') ? 'Term' : '%s']]):format(name, name, name))
+end

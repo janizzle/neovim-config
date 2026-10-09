@@ -3,12 +3,10 @@
 -- no settings.json), so it works no matter how Claude is sandboxed.
 -- Requires Neovim 0.10+ and Claude running in a pane of the same tmux server.
 --
---   <leader>cc   list every Claude session with its status, open one
---   in the popup: a = answer, r = refresh, q = close
---   answer "2"          -> picks menu option 2
---   answer "2 some text" -> picks option 2, then types "some text" + Enter
---   answer "some text"  -> types it + Enter
---   multi-select menu:   "1,3" / "1 3" -> checks those boxes, then Submit
+--   <leader>cc   list every Claude session with its status, open one: it
+--   attaches in a float and you type into Claude directly. <C-q> closes it
+--   (the session keeps running). <leader>cc then d restarts the chosen
+--   session in another directory.
 
 local C = require("config.palette")
 
@@ -23,7 +21,6 @@ local cfg = {
   -- Lua patterns matched against the bottom of the pane
   busy = { "esc to interrupt" },
   question = { "Do you want to", "❯ %d+%.", "Enter to select", "Esc to cancel" },
-  select_delay = 300, -- ms between picking a menu number and typing the text
   toast_ms = { question = 10000, done = 6000 },
   -- One colour per bot number (1-10). Orange is left out: it means "needs you".
   -- One name per bot number (1-10), same order as bot_colors.
@@ -160,14 +157,16 @@ local function collect(cb)
   sys({ "tmux", "list-panes", "-a", "-F", PANE_FMT }, function(r)
     if r.code ~= 0 then return cb({}) end
     claude_ttys(function(ttys)
-      local found = {}
+      local found, seen = {}, {}
       for line in r.stdout:gmatch("[^\n]+") do
         local id, tty, path, loc = line:match("^(%S+)\t([^\t]*)\t([^\t]*)\t(.*)$")
-        if id and ttys[(tty:gsub("^/dev/", ""))] then
+        -- a popup's grouped session lists the same pane a second time
+        if id and not seen[id] and ttys[(tty:gsub("^/dev/", ""))] then
+          seen[id] = true
           local n = bot_num(id)
           found[#found + 1] = {
             pane = id, num = n, name = "Claude " .. cfg.bot_names[n],
-            dir = vim.fn.fnamemodify(path, ":t"), loc = loc,
+            dir = vim.fn.fnamemodify(path, ":t"), path = path, loc = loc,
           }
         end
       end
@@ -207,127 +206,27 @@ local function scan()
   end)
 end
 
--- Answering -------------------------------------------------------------------
+-- Opening ---------------------------------------------------------------------
 
-local function send(pane, ...)
-  vim.system(vim.list_extend({ "tmux", "send-keys", "-t", pane }, { ... })):wait()
-end
-
--- Reads the on-screen menu. Returns nil unless it is a multi-select (numbered
--- rows with a "[ ]" / "[✔]" box). Rows are in screen order: the options, then
--- the bare "Submit" row below them.
-local function multi_menu(pane)
-  local out = vim.fn.system({ "tmux", "capture-pane", "-p", "-t", pane })
-  local lines = vim.split(out, "\n", { trimempty = true })
-  local rows, boxes = {}, 0
-  for i = math.max(1, #lines - 29), #lines do
-    -- "❯" is multi-byte, so it is stripped as a plain prefix, not a char class
-    local cursor = lines[i]:match("^%s*❯") ~= nil
-    local body = lines[i]:gsub("^%s*", ""):gsub("^❯%s*", "")
-    local num, rest = body:match("^(%d+)%.%s+(.*)$")
-    if num then
-      local box = rest:match("^%[(.-)%]")
-      if box then boxes = boxes + 1 end
-      rows[#rows + 1] = {
-        num = tonumber(num), cursor = cursor, checked = box ~= nil and box ~= " ",
-        other = rest:find("Type something", 1, true) ~= nil, box = box ~= nil,
-      }
-    elseif body == "Submit" or body == "Next" then
-      rows[#rows + 1] = { cursor = cursor, submit = true }
-    end
-  end
-  if boxes == 0 then return nil end
-  return { rows = rows }
-end
-
--- "1,3" checks options 1 and 3 (and unchecks any other ticked box); "1,3 some
--- text" also types the text into the "Type something" row. Then Submit + Enter.
-local function answer_multi(pane, menu, ans)
-  local want, text = {}, nil
-  local words = vim.split(vim.trim(ans), "[%s,]+", { trimempty = true })
-  for i, w in ipairs(words) do
-    if w:match("^%d+$") then want[tonumber(w)] = true
-    else text = table.concat(words, " ", i); break end
-  end
-  local at = 1
-  for i, r in ipairs(menu.rows) do if r.cursor then at = i end end
-  local steps = {} -- { "Down" | "Up" | "Space" | { "-l", text } }
-  local function goto_row(to)
-    while at < to do steps[#steps + 1] = "Down"; at = at + 1 end
-    while at > to do steps[#steps + 1] = "Up"; at = at - 1 end
-  end
-  for i, r in ipairs(menu.rows) do
-    if r.box and not r.other and (want[r.num] or false) ~= r.checked then
-      goto_row(i); steps[#steps + 1] = "Space"
-    elseif r.other and text then
-      goto_row(i); steps[#steps + 1] = { "-l", text }
-    end
-  end
-  for i, r in ipairs(menu.rows) do if r.submit then goto_row(i) end end
-  steps[#steps + 1] = "Enter"
-  -- one tmux call, commands chained with ";", so nothing blocks Neovim
-  local args = { "tmux" }
-  for i, st in ipairs(steps) do
-    if i > 1 then args[#args + 1] = ";" end
-    vim.list_extend(args, { "send-keys", "-t", pane })
-    vim.list_extend(args, type(st) == "table" and st or { st })
-  end
-  vim.system(args)
-end
-
--- "Sent" goes in the command line, in green (scheduled so the prompt has closed)
-local function sent_echo()
-  vim.api.nvim_echo({ { "Sent", "ClaudeStatusDone" } }, false, {})
-end
-
-local function answer(pane, ans)
-  local menu = multi_menu(pane)
-  if menu then
-    answer_multi(pane, menu, ans)
-    drop(pane)
-    return vim.schedule(sent_echo)
-  end
-  local num, text = ans:match("^(%d%d?)%s+(.+)$")
-  if num then
-    send(pane, num)                       -- select the menu option ...
-    vim.defer_fn(function()               -- ... let its text field open, then type
-      send(pane, "-l", text)
-      send(pane, "Enter")
-    end, cfg.select_delay)
-  elseif ans:match("^%d%d?$") then
-    send(pane, ans)                       -- menu option only: the digit selects it
-  else
-    if ans ~= "" then send(pane, "-l", ans) end
-    send(pane, "Enter")                   -- text answer / accept default
-  end
-  drop(pane)
-  -- scheduled so it opens after the cmdline prompt has fully closed
-  vim.schedule(sent_echo)
-end
-
+-- Attaches to the pane's tmux session in a float, so you type straight into
+-- Claude. The float uses a throwaway grouped session (own current window, shares
+-- the real one's windows) with the prefix key and status bar off, so tmux is
+-- invisible, and destroy-unattached removes it when the float closes.
 function M.open(it)
-  local buf = vim.api.nvim_create_buf(false, true)
-
-  local function refresh()
-    local out = vim.fn.system({ "tmux", "capture-pane", "-p", "-t", it.pane, "-S", "-60" })
-    if vim.v.shell_error ~= 0 then
-      vim.notify("Pane " .. it.pane .. " is gone", vim.log.levels.WARN)
-      drop(it.pane)
-      return false
-    end
-    local lines = vim.split(out, "\n")
-    while #lines > 0 and lines[#lines]:match("^%s*$") do table.remove(lines) end
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-    return true
+  local target = vim.trim(vim.fn.system({ "tmux", "display-message", "-p", "-t", it.pane, "#{session_name}" }))
+  if vim.v.shell_error ~= 0 or target == "" then
+    vim.notify("Pane " .. it.pane .. " is gone", vim.log.levels.WARN)
+    drop(it.pane)
+    return
   end
-
-  if not refresh() then return end
   drop(it.pane) -- seen
 
   local n = bot_num(it.pane)
   local bot = "Claude " .. cfg.bot_names[n]
   local rest = it.name:sub(#bot + 1) -- the " (dir)" suffix
+  local grp = "claude-popup-" .. it.pane:gsub("%%", "") .. "-" .. vim.uv.hrtime() % 100000
 
+  local buf = vim.api.nvim_create_buf(false, true)
   -- Centered and near-fullscreen: opening a session means you want to focus on it.
   local w = math.floor(vim.o.columns * 0.85)
   local h = math.floor(vim.o.lines * 0.85)
@@ -336,40 +235,89 @@ function M.open(it)
     title = {
       { " " .. icon .. " ", "ClaudeToast" },
       { bot, "ClaudeBot" .. n },
-      { rest .. "  [a]nswer [r]efresh [q]uit ", "ClaudeToast" },
+      { rest .. "  [<Esc><Esc>] close ", "ClaudeToast" },
     },
     width = w, height = h,
     row = math.floor((vim.o.lines - h) / 2) - 1,
     col = math.floor((vim.o.columns - w) / 2),
   })
-  vim.wo[win].wrap = false
-  vim.wo[win].winhighlight = "FloatBorder:ClaudeToastBorder,FloatTitle:ClaudeToast"
-  vim.cmd("normal! G")
+  vim.wo[win].winhighlight = "NormalFloat:Normal,FloatBorder:ClaudeToastBorder,FloatTitle:ClaudeToast"
 
-  local function map(k, f) vim.keymap.set("n", k, f, { buffer = buf, nowait = true }) end
-  map("q", "<cmd>close<cr>")
-  map("<Esc>", "<cmd>close<cr>")
-  map("r", function() refresh(); vim.cmd("normal! G") end)
-  map("a", function()
-    -- The cmdline prompt takes its colour from :echohl, so the bot's own
-    -- colour marks where you are typing.
-    vim.cmd("echohl ClaudeBot" .. n)
-    vim.ui.input({ prompt = it.name .. " (N, 1,3 for multi, N text, or text) > " }, function(ans)
-      vim.cmd("echohl None")
-      if ans == nil then return end -- cancelled
-      local ok, err = pcall(answer, it.pane, ans)
-      if not ok then vim.notify("Claude inbox: " .. tostring(err), vim.log.levels.ERROR) end
-      -- next tab / next question? then stay open, otherwise close
-      vim.defer_fn(function()
-        if not vim.api.nvim_win_is_valid(win) then return end
-        local out = vim.fn.system({ "tmux", "capture-pane", "-p", "-t", it.pane })
-        if vim.v.shell_error == 0 and classify(out) == "question" then
-          refresh(); vim.cmd("normal! G")
-        else
-          vim.api.nvim_win_close(win, true)
+  local cmd = {
+    "tmux", "new-session", "-t", target, "-s", grp,
+    ";", "set-option", "-t", grp, "prefix", "None",
+    ";", "set-option", "-t", grp, "status", "off",
+    ";", "set-option", "-t", grp, "destroy-unattached", "on",
+    ";", "select-window", "-t", it.pane,
+    ";", "select-pane", "-t", it.pane,
+  }
+  if vim.fn.has("nvim-0.11") == 1 then
+    vim.fn.jobstart(cmd, { term = true })
+  else
+    vim.fn.termopen(cmd)
+  end
+  vim.bo[buf].bufhidden = "wipe"
+
+  local function close()
+    if vim.api.nvim_win_is_valid(win) then vim.api.nvim_win_close(win, true) end
+  end
+  -- A single Esc and everything else go to Claude; <Esc><Esc> or <C-q> leaves.
+  vim.keymap.set("t", "<C-q>", close, { buffer = buf, desc = "Close Claude popup" })
+  -- Overrides the global <Esc><Esc> (exit terminal mode) inside this float.
+  vim.keymap.set("t", "<Esc><Esc>", close, { buffer = buf, desc = "Close Claude popup" })
+  vim.keymap.set("n", "q", close, { buffer = buf, nowait = true })
+  vim.api.nvim_create_autocmd("TermClose", { buffer = buf, once = true, callback = function()
+    vim.schedule(close) -- Claude / the session ended
+  end })
+  vim.cmd("startinsert")
+end
+
+-- Changing directory ------------------------------------------------------------
+
+-- A running process can't change its working directory from outside, and
+-- Claude Code has no command for it. So: /exit, wait for the shell underneath
+-- (see tmux-start.sh), then `cd <dir> && claude`. The conversation is lost:
+-- Claude keeps its history per directory.
+function M.chdir(p, dir)
+  dir = vim.fn.fnamemodify(vim.fn.expand(dir), ":p")
+  if vim.fn.isdirectory(dir) == 0 then
+    return vim.notify("Not a directory: " .. dir, vim.log.levels.ERROR)
+  end
+  local tty = vim.trim(vim.fn.system({ "tmux", "display-message", "-p", "-t", p.pane, "#{pane_tty}" }))
+  if vim.v.shell_error ~= 0 then return vim.notify("Pane " .. p.pane .. " is gone", vim.log.levels.WARN) end
+  tty = tty:gsub("^/dev/", "")
+  vim.system({ "tmux", "send-keys", "-t", p.pane, "-l", "/exit" }):wait()
+  vim.system({ "tmux", "send-keys", "-t", p.pane, "Enter" }):wait()
+  local tries = 0
+  local function wait()
+    tries = tries + 1
+    claude_ttys(function(ttys)
+      if ttys[tty] then
+        if tries > 40 then
+          return vim.notify(p.name .. " did not exit; directory not changed", vim.log.levels.WARN)
         end
-      end, 700)
+        return vim.defer_fn(wait, 250)
+      end
+      vim.system({ "tmux", "send-keys", "-t", p.pane, "cd " .. vim.fn.shellescape(dir) .. " && claude", "Enter" })
+      drop(p.pane)
+      M.panes[p.pane] = nil
+      vim.notify(p.name .. " restarted in " .. dir, vim.log.levels.INFO)
     end)
+  end
+  vim.defer_fn(wait, 400)
+end
+
+local function ask_chdir(p)
+  if p.state ~= "idle" then
+    return vim.notify(p.name .. " is busy or has a question; wait until it is idle", vim.log.levels.WARN)
+  end
+  vim.cmd("echohl ClaudeBot" .. p.num)
+  vim.ui.input({
+    prompt = p.name .. " restarts in (conversation is lost) > ",
+    default = p.path, completion = "dir",
+  }, function(dir)
+    vim.cmd("echohl None")
+    if dir and dir ~= "" then M.chdir(p, dir) end
   end)
 end
 
@@ -425,7 +373,7 @@ function M.pick()
 
     local win = vim.api.nvim_open_win(buf, true, {
       relative = "editor", border = "rounded", style = "minimal",
-      title = " " .. icon .. " Claude sessions  [<cr>] open  [1-9] jump  [q] close ",
+      title = " " .. icon .. " Claude sessions  [<cr>] open  [1-9] jump  [d] change dir  [q] close ",
       width = width + 2, height = #list,
       row = math.floor((vim.o.lines - #list) / 2),
       col = math.floor((vim.o.columns - width - 2) / 2),
@@ -443,6 +391,11 @@ function M.pick()
     map("<cr>", function() choose(vim.api.nvim_win_get_cursor(win)[1]) end)
     map("q", "<cmd>close<cr>")
     map("<Esc>", "<cmd>close<cr>")
+    map("d", function()
+      local p = list[vim.api.nvim_win_get_cursor(win)[1]]
+      vim.api.nvim_win_close(win, true)
+      if p then ask_chdir(p) end
+    end)
     for i = 1, math.min(#list, 9) do map(tostring(i), function() choose(i) end) end
   end)
 end
