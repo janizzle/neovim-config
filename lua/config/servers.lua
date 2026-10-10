@@ -17,6 +17,7 @@ return {
     root_dir = root_or_cwd({ "composer.json", ".git", "phpstan.neon", "phpstan.neon.dist" }),
     settings = {
       intelephense = {
+        environment = { phpVersion = require("config.php").version },
         -- Intelephense's full default stub list PLUS "gettext" (defines the
         -- _() translation alias). Must be explicit: setting "stubs" at all
         -- REPLACES the default set, so omissions go dark.

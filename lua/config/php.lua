@@ -8,6 +8,11 @@
 
 local M = {}
 
+--- The PHP version this config standardises on ("major.minor"). One knob:
+--- it sets intelephense's language level and is what M.check() compares the
+--- `php` on $PATH against.
+M.version = "8.3"
+
 local TIMEOUT_MS = 10000
 local SCAN_LINES = 200
 
@@ -142,6 +147,30 @@ local function source(buf)
   end
   return lines
 end
+
+--- "major.minor" of the `php` found on $PATH, or nil.
+local function path_version()
+  if vim.fn.executable("php") == 0 then return nil end
+  local res = vim.system({ "php", "-r", "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;" }, { text = true }):wait(5000)
+  return res.code == 0 and res.stdout or nil
+end
+
+--- Warn once at startup when the `php` on $PATH isn't M.version (or is
+--- missing). Nothing is installed or switched: the binary comes from your
+--- system, this only tells you when it disagrees with the pinned version.
+function M.check()
+  local found = path_version()
+  if found == M.version then return end
+  vim.notify(
+    found and ("PHP %s pinned, but `php` on $PATH is %s"):format(M.version, found)
+      or ("PHP %s pinned, but no `php` on $PATH"):format(M.version),
+    vim.log.levels.WARN)
+end
+
+vim.api.nvim_create_autocmd("VimEnter", {
+  once = true,
+  callback = function() vim.schedule(M.check) end,
+})
 
 --- Run the current PHP buffer and show stdout + stderr in the output pane.
 function M.run()

@@ -128,6 +128,148 @@ return {
       end)
     end
 
+    -- Servers without import code actions (intelephense) still attach the
+    -- `use` statement to completion items as additionalTextEdits. Ask for
+    -- completions at the end of the word under the cursor, keep the items
+    -- named exactly like it, and apply the chosen item's edits.
+    local function import_via_completion(buf)
+      local word = vim.fn.expand("<cword>")
+      if word == "" then return end
+      local row, col = unpack(vim.api.nvim_win_get_cursor(0))
+      local line = vim.api.nvim_get_current_line()
+      local endcol = col + #line:sub(col + 1):match("^[%w_]*")
+      local client = vim.lsp.get_clients({ bufnr = buf, method = "textDocument/completion" })[1]
+      if not client then
+        vim.notify("No LSP completion available for import", vim.log.levels.WARN)
+        return
+      end
+      local params = {
+        textDocument = vim.lsp.util.make_text_document_params(buf),
+        position = {
+          line = row - 1,
+          character = vim.str_utfindex(line, "utf-16", endcol, false),
+        },
+      }
+
+      local function apply(item)
+        local function done(it)
+          vim.lsp.util.apply_text_edits(it.additionalTextEdits, buf, client.offset_encoding)
+        end
+        if item.additionalTextEdits and #item.additionalTextEdits > 0 then
+          done(item)
+        else
+          client:request("completionItem/resolve", item, function(_, resolved)
+            if resolved and resolved.additionalTextEdits and #resolved.additionalTextEdits > 0 then
+              done(resolved)
+            else
+              vim.notify("No import available for " .. word, vim.log.levels.INFO)
+            end
+          end, buf)
+        end
+      end
+
+      client:request("textDocument/completion", params, function(err, result)
+        if err or not result then
+          vim.notify("Import lookup failed", vim.log.levels.WARN)
+          return
+        end
+        local items = result.items or result
+        local matches, seen = {}, {}
+        for _, it in ipairs(items) do
+          local key = (it.detail or "") .. "\0" .. it.label
+          if it.label:lower() == word:lower() and not seen[key] then
+            seen[key] = true
+            matches[#matches + 1] = it
+          end
+        end
+        if #matches == 0 then
+          vim.notify("No import found for " .. word, vim.log.levels.INFO)
+        elseif #matches == 1 then
+          apply(matches[1])
+        else
+          vim.ui.select(matches, {
+            prompt = "Import " .. word,
+            format_item = function(it) return it.detail or it.label end,
+          }, function(choice) if choice then apply(choice) end end)
+        end
+      end, buf)
+    end
+
+    -- Sort imports. TS/JS: the server's source.organizeImports action. PHP
+    -- (intelephense has none): each run of consecutive single-line top-level
+    -- `use` statements is sorted -- classes, then functions, then consts --
+    -- case-insensitively, dropping exact duplicates and imports whose name
+    -- (or alias) appears nowhere else in the file. That's a text check, so a
+    -- name mentioned only in a comment counts as used.
+    local function sort_php_uses(buf)
+      local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+      local function rank(l)
+        if l:match("^use%s+function%s") then return 1 end
+        if l:match("^use%s+const%s") then return 2 end
+        return 0
+      end
+      local function is_use(l) return l:match("^use%s+[^%(%s][^;{}]*;%s*$") ~= nil end
+      local function before(a, b)
+        local ra, rb = rank(a), rank(b)
+        if ra ~= rb then return ra < rb end
+        return a:lower() < b:lower()
+      end
+
+      -- Everything that isn't a plain import line: where a name must show up
+      -- (code, docblocks, attributes, multi-line group imports) to count as used.
+      local body = {}
+      for _, l in ipairs(lines) do
+        if not is_use(l) then body[#body + 1] = l end
+      end
+      local haystack = table.concat(body, "\n"):lower()
+
+      local function used(l)
+        local spec = l:gsub("^use%s+function%s+", ""):gsub("^use%s+const%s+", "")
+          :gsub("^use%s+", ""):gsub("%s*;%s*$", "")
+        local name = spec:match("%s+[aA][sS]%s+([%w_]+)$") or spec:match("([%w_]+)$")
+        if not name then return true end
+        return haystack:find("%f[%w_]" .. vim.pesc(name:lower()) .. "%f[^%w_]") ~= nil
+      end
+
+      local out, i = {}, 1
+      while i <= #lines do
+        if is_use(lines[i]) then
+          local block, seen = {}, {}
+          while i <= #lines and is_use(lines[i]) do
+            if not seen[lines[i]] and used(lines[i]) then
+              seen[lines[i]] = true
+              block[#block + 1] = lines[i]
+            end
+            i = i + 1
+          end
+          table.sort(block, before)
+          vim.list_extend(out, block)
+        else
+          out[#out + 1] = lines[i]
+          i = i + 1
+        end
+      end
+
+      if vim.deep_equal(out, lines) then return end
+      local view = vim.fn.winsaveview()
+      vim.api.nvim_buf_set_lines(buf, 0, -1, false, out)
+      vim.fn.winrestview(view)
+    end
+
+    local function sort_imports(buf)
+      buf = buf or vim.api.nvim_get_current_buf()
+      if vim.bo[buf].filetype == "php" then
+        sort_php_uses(buf)
+      else
+        vim.lsp.buf.code_action({
+          context = { only = { "source.organizeImports" }, diagnostics = {} },
+          apply = true,
+        })
+      end
+    end
+    vim.api.nvim_create_user_command("SortImports", function() sort_imports() end,
+      { desc = "Sort the buffer's imports" })
+
     -- Neovim 0.11+ ships global grr/gri/gra/grn/grt/grx (and gO). With them
     -- around, our `gr` is only a prefix: Neovim waits after it, and one extra
     -- key lands in grr/gri -- plain vim.lsp.buf calls that fill the quickfix
@@ -173,11 +315,16 @@ return {
         -- Import menu for the symbol under the cursor: only the import-type
         -- code actions (ts_ls "Add import from ...", one entry per candidate).
         map("<leader>ci", function()
-          vim.lsp.buf.code_action({
-            apply = false,
-            filter = function(a) return a.title:lower():find("import", 1, true) ~= nil end,
-          })
+          if #vim.lsp.get_clients({ bufnr = buf, method = "textDocument/codeAction" }) > 0 then
+            vim.lsp.buf.code_action({
+              apply = false,
+              filter = function(a) return a.title:lower():find("import", 1, true) ~= nil end,
+            })
+          else
+            import_via_completion(buf)
+          end
         end, "LSP: import symbol (pick namespace)")
+        map("<leader>cs", function() sort_imports(buf) end, "LSP: sort imports")
         map("[d", function() vim.diagnostic.jump({ count = -1 }) end, "Prev diagnostic")
         map("]d", function() vim.diagnostic.jump({ count = 1 })  end, "Next diagnostic")
       end,

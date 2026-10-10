@@ -121,6 +121,7 @@ local sections = {
     row("K",          "Hover docs",       "gD gi gy",   "Decl · impl · type"),
     row("[d ]d",      "Prev / next diagnostic"),
     row("<space>rn",  "Rename symbol",    "<space>ca",  "Code action"),
+    row("<space>ci",  "Import symbol",    "<space>cs",  "Sort + drop unused"),
     row("<space>cf",  "Format",           "<space>o",   "Structure view"),
     row("<C-space>",  "Completion",       "<cr>",       "Accept"),
   }},

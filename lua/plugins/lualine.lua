@@ -8,6 +8,13 @@ return {
       return vim.api.nvim_buf_line_count(0) .. " lines"
     end
 
+    -- Names of the language servers attached to this buffer (php -> intelephense).
+    local function lsp_clients()
+      local names = {}
+      for _, c in ipairs(vim.lsp.get_clients({ bufnr = 0 })) do names[#names + 1] = c.name end
+      return #names > 0 and table.concat(names, ", ") or ""
+    end
+
     require("lualine").setup({
       options = { theme = "auto", section_separators = "", component_separators = "" },
       sections = {
@@ -20,7 +27,7 @@ return {
           { "filename", fmt = function(str) return vim.b.welcome_screen and "Welcome" or str end },
           "aerial",
         },
-        lualine_x = { "encoding", "fileformat", "filetype" },
+        lualine_x = { "encoding", "fileformat", "filetype", { lsp_clients, icon = "" } },
         lualine_y = { "progress", total_lines },
         lualine_z = { "location" },
       },
