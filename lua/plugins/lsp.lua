@@ -170,6 +170,14 @@ return {
         map("K",  smart_hover, "LSP: hover docs (+ full error on diagnostic lines)")
         map("<leader>rn", vim.lsp.buf.rename,     "LSP: rename symbol")
         map("<leader>ca", vim.lsp.buf.code_action,"LSP: code action")
+        -- Import menu for the symbol under the cursor: only the import-type
+        -- code actions (ts_ls "Add import from ...", one entry per candidate).
+        map("<leader>ci", function()
+          vim.lsp.buf.code_action({
+            apply = false,
+            filter = function(a) return a.title:lower():find("import", 1, true) ~= nil end,
+          })
+        end, "LSP: import symbol (pick namespace)")
         map("[d", function() vim.diagnostic.jump({ count = -1 }) end, "Prev diagnostic")
         map("]d", function() vim.diagnostic.jump({ count = 1 })  end, "Next diagnostic")
       end,

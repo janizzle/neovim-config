@@ -286,6 +286,9 @@ function M.chdir(p, dir)
   local tty = vim.trim(vim.fn.system({ "tmux", "display-message", "-p", "-t", p.pane, "#{pane_tty}" }))
   if vim.v.shell_error ~= 0 then return vim.notify("Pane " .. p.pane .. " is gone", vim.log.levels.WARN) end
   tty = tty:gsub("^/dev/", "")
+  -- A pane left in copy-mode (scrolled, mouse wheel) turns send-keys into
+  -- copy-mode bindings: "f" is "jump forward", "/" is search. Leave it first.
+  vim.system({ "tmux", "copy-mode", "-q", "-t", p.pane }):wait()
   vim.system({ "tmux", "send-keys", "-t", p.pane, "-l", "/exit" }):wait()
   vim.system({ "tmux", "send-keys", "-t", p.pane, "Enter" }):wait()
   local tries = 0
@@ -298,6 +301,7 @@ function M.chdir(p, dir)
         end
         return vim.defer_fn(wait, 250)
       end
+      vim.system({ "tmux", "copy-mode", "-q", "-t", p.pane }):wait()
       vim.system({ "tmux", "send-keys", "-t", p.pane, "cd " .. vim.fn.shellescape(dir) .. " && claude", "Enter" })
       drop(p.pane)
       M.panes[p.pane] = nil
