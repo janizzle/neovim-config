@@ -12,7 +12,9 @@ return {
     local names = vim.tbl_keys(servers)
 
     require("mason").setup()
-    require("mason-lspconfig").setup({ ensure_installed = names })
+    -- automatic_enable off: it would start every mason-installed server (a
+    -- stray phpactor, say) next to the ones enabled explicitly below.
+    require("mason-lspconfig").setup({ ensure_installed = names, automatic_enable = false })
 
     -- Point a table cmd at mason's binary. nvim-lspconfig's bundled cmds are
     -- bare names, and the current mason-org split no longer rewrites them to
@@ -289,25 +291,57 @@ return {
         end
         local tb = require("telescope.builtin")
 
-        -- Every jump goes through Telescope: one result jumps straight there,
-        -- several open the full-size picker, and a selection routes into the
-        -- main window (never the blame column). vim.lsp.buf.definition & co.
-        -- dump several results into the quickfix window at the bottom instead
-        -- -- which is what gd did whenever a server answered twice (intelephense
-        -- duplicates, a .d.ts next to the source).
-        local function picker(fn, extra)
+        -- Jumps go through on_list so the results can be cleaned up first:
+        -- intelephense answers a class with the class AND its __construct, and
+        -- sometimes repeats a location. One result jumps straight there (in
+        -- the main window, never the blame column); several open Telescope's
+        -- quickfix picker.
+        local function clean(items, drop_constructors)
+          local out, seen = {}, {}
+          for _, it in ipairs(items) do
+            local key = it.filename .. ":" .. it.lnum
+            if not seen[key] then
+              seen[key] = true
+              out[#out + 1] = it
+            end
+          end
+          if drop_constructors and #out > 1 then
+            local kept = vim.tbl_filter(function(it)
+              return not (it.text or ""):find("__construct", 1, true)
+            end, out)
+            if #kept > 0 then out = kept end
+          end
+          return out
+        end
+
+        local function jump_to(it)
+          pcall(function() require("config.blame").close() end)
+          local main = require("config.windows").find_main_window()
+          if main then vim.api.nvim_set_current_win(main) end
+          if vim.fn.fnamemodify(it.filename, ":p") ~= vim.api.nvim_buf_get_name(0) then
+            vim.cmd("edit " .. vim.fn.fnameescape(it.filename))
+          end
+          pcall(vim.api.nvim_win_set_cursor, 0, { it.lnum, it.col - 1 })
+        end
+
+        local function lsp_jump(request, drop_constructors, opts)
           return function()
-            fn(vim.tbl_extend("force", {
-              attach_mappings = require("config.picker").open_in_main,
-            }, extra or {}))
+            request(vim.tbl_extend("force", opts or {}, {
+              on_list = function(list)
+                local items = clean(list.items, drop_constructors)
+                if #items == 1 then return jump_to(items[1]) end
+                vim.fn.setqflist({}, " ", { title = list.title, items = items })
+                tb.quickfix({ attach_mappings = require("config.picker").open_in_main })
+              end,
+            }))
           end
         end
 
-        map("gd", picker(tb.lsp_definitions),      "LSP: go to definition")
+        map("gd", lsp_jump(vim.lsp.buf.definition, true), "LSP: go to definition")
         map("gD", vim.lsp.buf.declaration,         "LSP: go to declaration")
-        map("gi", picker(tb.lsp_implementations),  "LSP: go to implementation")
-        map("gy", picker(tb.lsp_type_definitions), "LSP: go to type definition")
-        map("gr", picker(tb.lsp_references, { include_declaration = false }),
+        map("gi", lsp_jump(vim.lsp.buf.implementation, true), "LSP: go to implementation")
+        map("gy", lsp_jump(vim.lsp.buf.type_definition, true), "LSP: go to type definition")
+        map("gr", lsp_jump(vim.lsp.buf.references, false, { includeDeclaration = false }),
           "LSP: find references")
         map("K",  smart_hover, "LSP: hover docs (+ full error on diagnostic lines)")
         map("<leader>rn", vim.lsp.buf.rename,     "LSP: rename symbol")
@@ -325,6 +359,8 @@ return {
           end
         end, "LSP: import symbol (pick namespace)")
         map("<leader>cs", function() sort_imports(buf) end, "LSP: sort imports")
+        map("<leader>cd", function() vim.diagnostic.open_float({ scope = "line" }) end,
+          "LSP: line diagnostics float")
         map("[d", function() vim.diagnostic.jump({ count = -1 }) end, "Prev diagnostic")
         map("]d", function() vim.diagnostic.jump({ count = 1 })  end, "Next diagnostic")
       end,
