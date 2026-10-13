@@ -324,25 +324,29 @@ return {
           pcall(vim.api.nvim_win_set_cursor, 0, { it.lnum, it.col - 1 })
         end
 
-        local function lsp_jump(request, drop_constructors, opts)
+        local function lsp_jump(request, drop_constructors)
           return function()
-            request(vim.tbl_extend("force", opts or {}, {
+            request({
               on_list = function(list)
                 local items = clean(list.items, drop_constructors)
                 if #items == 1 then return jump_to(items[1]) end
                 vim.fn.setqflist({}, " ", { title = list.title, items = items })
                 tb.quickfix({ attach_mappings = require("config.picker").open_in_main })
               end,
-            }))
+            })
           end
+        end
+
+        -- references() takes (context, opts), unlike the other requests.
+        local function references(opts)
+          vim.lsp.buf.references({ includeDeclaration = false }, opts)
         end
 
         map("gd", lsp_jump(vim.lsp.buf.definition, true), "LSP: go to definition")
         map("gD", vim.lsp.buf.declaration,         "LSP: go to declaration")
         map("gi", lsp_jump(vim.lsp.buf.implementation, true), "LSP: go to implementation")
         map("gy", lsp_jump(vim.lsp.buf.type_definition, true), "LSP: go to type definition")
-        map("gr", lsp_jump(vim.lsp.buf.references, false, { includeDeclaration = false }),
-          "LSP: find references")
+        map("gr", lsp_jump(references, false), "LSP: find references")
         map("K",  smart_hover, "LSP: hover docs (+ full error on diagnostic lines)")
         map("<leader>rn", vim.lsp.buf.rename,     "LSP: rename symbol")
         map("<leader>ca", vim.lsp.buf.code_action,"LSP: code action")
