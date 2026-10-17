@@ -105,15 +105,24 @@ local sections = {
     row("d",         "Change directory", "q",       "Close list"),
     BLANK,
     sub("In an open session (type straight into Claude)"),
-    row("<C-q>",     "Close, keeps running"),
+    row("<Esc><Esc>", "Close, keeps running"),
   }},
 
-  { "Buffers & windows", {
+  { "Buffers & views", {
     row("<space>s",    "Save",            "<space>x",    "Save & close"),
     row("<space>q",    "Force close",     "<space>X",    "Close, discard"),
-    row("Shift-h/l",   "Prev / next tab", "<space>l",    "Restore layout"),
-    row("<space>w1-9", "Jump to window",  "<space>t1-9", "Jump to buffer tab"),
-    row(":qa",         "Quit all"),
+    row("Shift-h/l",   "Prev / next tab", "<space>t1-9", "Jump to buffer tab"),
+    row("<space>l",    "Restore layout",  ":qa",         "Quit all"),
+    BLANK,
+    sub("Views: Ctrl+w, let go, then the key"),
+    row("<C-w>v",      "Split vertical",  "<C-w>s",      "Split horizontal"),
+    row("<C-w>hjkl",   "Go to view",      "<C-w>w",      "Next view"),
+    row("<C-w>c",      "Close view",      "<C-w>o",      "Close others"),
+    row("<C-w>x",      "Swap views",      "<C-w>HJKL",   "Move to edge"),
+    row("<C-w>← →",    "Move border",     "<C-w>↓ ↑",    "Move border"),
+    sub("Arrows move the border that way; keep pressing to repeat, <Esc> stops"),
+    row("<C-w>=",      "Equalize",        "<C-w>| _",    "Maximize w / h"),
+    row("<space>v hjkl", "Resize mode",   "<space>vq",   "Close view"),
   }},
 
   { "Code (LSP)", {

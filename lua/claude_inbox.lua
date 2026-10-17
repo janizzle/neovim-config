@@ -4,8 +4,8 @@
 -- Requires Neovim 0.10+ and Claude running in a pane of the same tmux server.
 --
 --   <leader>cc   list every Claude session with its status, open one: it
---   attaches in a float and you type into Claude directly. <C-q> closes it
---   (the session keeps running). <leader>cc then d restarts the chosen
+--   attaches in a float and you type into Claude directly. <Esc><Esc> (or
+--   <C-q>) closes it (the session keeps running). <leader>cc then d restarts the chosen
 --   session in another directory.
 
 local C = require("config.palette")

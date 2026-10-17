@@ -34,6 +34,8 @@ for _, name in ipairs({
   "git-conflict",
   -- extras
   "vim-be-good",
+  "precognition",
+  "hardtime",
   "leetcode",
 }) do
   specs[#specs + 1] = require("plugins." .. name)

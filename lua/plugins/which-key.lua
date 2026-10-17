@@ -13,7 +13,8 @@ return {
       { "<leader>h", group = "hunks" },
       { "<leader>r", group = "rename" },
       { "<leader>t", group = "buffer tabs" },
-      { "<leader>w", group = "windows" },
+      { "<leader>v", group = "views" },
+      { "<leader>vr", group = "resize (<Esc> to leave)" },
     },
   },
 }

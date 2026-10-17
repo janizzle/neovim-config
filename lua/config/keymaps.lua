@@ -37,31 +37,72 @@ vim.keymap.set("n", "<leader>x", function() smart_close(false) end, { desc = "Sa
 vim.keymap.set("n", "<leader>q", function() smart_close(true) end, { desc = "Force close buffer (no save)" })
 vim.keymap.set("n", "<leader>X", function() smart_close(true) end, { desc = "Force close buffer (discard changes)" })
 
--- Windows & buffer tabs by number ---------------------------------------------
+-- Views -----------------------------------------------------------------------
 
--- <leader>w1..9: windows numbered top-left -> bottom-right (1 = tree, 2 = editor).
--- The one exception is diffview's history list, which sits along the bottom:
--- it is still window 1, so w1 is the list in every view.
-local function numbered_windows()
-  local wins, list = {}, {}
-  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
-    if vim.api.nvim_win_get_config(win).relative == "" then   -- skip floats
-      if vim.bo[vim.api.nvim_win_get_buf(win)].filetype == "DiffviewFileHistory" then
-        list[#list + 1] = win
-      else
-        wins[#wins + 1] = win
-      end
+vim.keymap.set("n", "<leader>vq", "<cmd>close<cr>", { desc = "Close view" })
+
+-- Resizing moves the nearest border in the direction pressed, like tmux:
+-- right always pushes a border right, whichever side of it this view is on.
+-- (Plain <C-w>> means "this view wider", which in the rightmost view drags
+-- its left border left -- backwards on an arrow key.)
+local function nudge(dir, step)
+  local vertical = dir == "h" or dir == "l"
+  local forward = dir == "l" or dir == "j"
+  local has_after = vim.fn.winnr(vertical and "l" or "j") ~= vim.fn.winnr()
+  local delta = forward == has_after and step or -step
+  if vertical then
+    vim.api.nvim_win_set_width(0, vim.api.nvim_win_get_width(0) + delta)
+  else
+    vim.api.nvim_win_set_height(0, vim.api.nvim_win_get_height(0) + delta)
+  end
+end
+
+-- <C-w> + arrow resizes, then stays in resize mode (shown in the command
+-- line): more arrows, with or without another <C-w> in front, keep going.
+-- <Esc> leaves; any other key leaves and then does its normal thing.
+-- A count multiplies the first step (5<C-w><Right>).
+local ARROW_DIRS = { ["<Left>"] = "h", ["<Down>"] = "j", ["<Up>"] = "k", ["<Right>"] = "l" }
+local function resize_loop(key)
+  local step = vim.v.count1 * 2
+  while ARROW_DIRS[key] do
+    nudge(ARROW_DIRS[key], step)
+    step = 2
+    vim.api.nvim_echo({ { "-- RESIZE --", "ModeMsg" }, { "  arrows move the border, <Esc> stops" } }, false, {})
+    vim.cmd.redraw()
+    local ok, raw = pcall(vim.fn.getcharstr)
+    if not ok then break end  -- <C-c>
+    key = vim.fn.keytrans(raw)
+    if key == "<C-W>" then
+      local ok2, nxt = pcall(vim.fn.getcharstr)
+      if not ok2 then break end
+      raw, key = raw .. nxt, vim.fn.keytrans(nxt)
+    end
+    if not ARROW_DIRS[key] and key ~= "<Esc>" then
+      vim.api.nvim_feedkeys(raw, "mi", false)  -- "i": ahead of keys already queued
     end
   end
-  return vim.list_extend(list, wins)
+  vim.api.nvim_echo({ { "" } }, false, {})
+end
+for key, dir in pairs(ARROW_DIRS) do
+  vim.keymap.set("n", "<C-w>" .. key, function() resize_loop(key) end,
+    { desc = "Resize: border " .. dir .. " (repeat arrows, <Esc> stops)" })
 end
 
-for i = 1, 9 do
-  vim.keymap.set("n", "<leader>w" .. i, function()
-    local win = numbered_windows()[i]
-    if win then vim.api.nvim_set_current_win(win) end
-  end, { desc = "Go to window " .. i })
+-- <leader>vh/j/k/l: the same resizing on hjkl, through which-key's loop popup
+-- (bare h/j/k/l keep going until <Esc>).
+local RESIZE_STEP = 3
+local ARROWS = { h = "←", j = "↓", k = "↑", l = "→" }
+for dir, arrow in pairs(ARROWS) do
+  -- The keys resize mode offers; the loop popup lists them by these descs.
+  vim.keymap.set("n", "<leader>vr" .. dir, function() nudge(dir, RESIZE_STEP) end, { desc = "Border " .. arrow })
+  vim.keymap.set("n", "<leader>v" .. dir, function()
+    nudge(dir, RESIZE_STEP)
+    require("which-key").show({ keys = "<leader>vr", loop = true })
+  end, { desc = "Resize view " .. arrow .. " (then hjkl, <Esc> done)" })
 end
+vim.keymap.set("n", "<leader>vr=", "<cmd>wincmd =<cr>", { desc = "Equalize views" })
+
+-- Buffer tabs by number -------------------------------------------------------
 
 -- <leader>t1..9: Nth bufferline tab, left -> right.
 for i = 1, 9 do
