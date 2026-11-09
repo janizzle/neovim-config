@@ -14,6 +14,10 @@
 -- plugins/diffview.lua. The conflict list is ours: diffview's own panel groups
 -- conflicts into a section of the single file panel rather than a window of its
 -- own, so we render one here and drive the view through `set_file_by_path`.
+--
+-- A changed file with no conflict opens as two panes instead, turned round like
+-- <leader>dd: WORKING TREE · <name> on the left, HEAD · <branch> · <name> on the
+-- right.
 
 local api = vim.api
 local uv = vim.uv or vim.loop
@@ -177,6 +181,13 @@ local function winbar(group, text)
   return ("%%#%s# %s %%#MergeWinbarFill#"):format(group, (text:gsub("%%", "%%%%")))
 end
 
+local function current_view()
+  local ok, lib = pcall(require, "diffview.lib")
+  if not ok then return end
+  local view = lib.get_current_view()
+  if view and view.set_file_by_path then return view end
+end
+
 --- Label and recolor the panes. Vim's diff highlighting is per window and knows
 --- nothing about "ours" and "theirs", so map the generic Diff* groups onto
 --- side-specific ones through `winhighlight` -- the same trick diffview uses for
@@ -295,11 +306,21 @@ local function style_panes()
     end
   elseif #wins == 2 then
     -- A plain changed file: no sides to tell apart, so leave the normal diff
-    -- colours alone and only quiet down the filler.
-    local titles = { "HEAD · " .. labels.ours, "WORKING TREE" }
-    for i, win in ipairs(wins) do
+    -- colours alone and only quiet down the filler. Turned round like
+    -- <leader>dd: the working tree on the left, the committed file on the right.
+    local view = current_view()
+    local layout = view and view.cur_layout
+    local old, new = require("config.review").working_left(layout)
+    if not old then return end
+    -- Each side's own path, so a rename shows the old name on the HEAD side.
+    local function name(file) return vim.fn.fnamemodify(file and file.path or "", ":t") end
+    local titles = {
+      [new] = "WORKING TREE · " .. name(layout.b.file),
+      [old] = "HEAD · " .. labels.ours .. " · " .. name(layout.a.file),
+    }
+    for _, win in ipairs({ old, new }) do
       vim.wo[win].winhighlight = "DiffDelete:MergeFiller"
-      vim.wo[win].winbar = winbar("MergeWinbarSide", titles[i])
+      vim.wo[win].winbar = winbar("MergeWinbarSide", titles[win])
     end
   end
 end
@@ -310,13 +331,6 @@ local function entry_at_cursor()
   if not (panel.win and api.nvim_win_is_valid(panel.win)) then return end
   local row = api.nvim_win_get_cursor(panel.win)[1]
   return panel.entries[row - 1]  -- line 1 is the header
-end
-
-local function current_view()
-  local ok, lib = pcall(require, "diffview.lib")
-  if not ok then return end
-  local view = lib.get_current_view()
-  if view and view.set_file_by_path then return view end
 end
 
 local function open_entry()

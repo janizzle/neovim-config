@@ -34,13 +34,11 @@ local function winbar(group, text)
   return ("%%#%s# %s %%#DiffSideWinbarFill#"):format(group, (text:gsub("%%", "%%%%")))
 end
 
---- Working tree on the left, HEAD on the right, labelled the same way as
---- <leader>ds. Safe to call on every diffview event: it only swaps when the
---- panes are in diffview's order.
-local function arrange()
-  local view = current_view()
-  if not (view and ours[view]) then return end
-  local layout = view.cur_layout
+--- Put a two-pane layout's new side (`b`, the working tree) left of its old
+--- side (`a`). Safe to call on every diffview event: it only swaps when the
+--- panes are in diffview's order. Also used by the merge view (config/merge.lua).
+--- @return integer? old, integer? new  window ids; nil unless both panes are up
+function M.working_left(layout)
   -- Two-pane layouts only; a deleted or brand-new file may show just one.
   if not (layout and layout.a and layout.b) then return end
   local old, new = layout.a.id, layout.b.id
@@ -52,6 +50,16 @@ local function arrange()
     api.nvim_win_call(old, function() vim.cmd("wincmd x") end)
     if api.nvim_win_is_valid(cur) then api.nvim_set_current_win(cur) end
   end
+  return old, new
+end
+
+--- Working tree on the left, HEAD on the right, labelled the same way as
+--- <leader>ds.
+local function arrange()
+  local view = current_view()
+  if not (view and ours[view]) then return end
+  local old, new = M.working_left(view.cur_layout)
+  if not old then return end
 
   for _, win in ipairs({ old, new }) do
     vim.wo[win].list = false
