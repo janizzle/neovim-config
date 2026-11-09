@@ -1,6 +1,14 @@
 -- Global (non-plugin) keymaps. Plugin-local maps live with their plugin
 -- (telescope, gitsigns, LSP attach, ...).
 
+-- Insert mode -----------------------------------------------------------------
+
+-- Alt+hjkl moves the cursor without leaving insert mode.
+vim.keymap.set("i", "<A-h>", "<Left>", { desc = "Cursor left" })
+vim.keymap.set("i", "<A-j>", "<Down>", { desc = "Cursor down" })
+vim.keymap.set("i", "<A-k>", "<Up>", { desc = "Cursor up" })
+vim.keymap.set("i", "<A-l>", "<Right>", { desc = "Cursor right" })
+
 -- Buffers ---------------------------------------------------------------------
 
 vim.keymap.set("n", "<S-l>", "<cmd>bnext<cr>", { desc = "Next buffer" })
@@ -132,6 +140,7 @@ vim.keymap.set("n", "<leader>dH", "<cmd>DiffviewFileHistory<cr>",   { desc = "Di
 -- Merge workspace: conflict list + changed files on the left, OURS | working |
 -- THEIRS side by side. See config/merge.lua.
 vim.keymap.set("n", "<leader>dm", "<cmd>Merge<cr>", { desc = "Merge: resolve conflicts (diffview)" })
+vim.keymap.set("n", "<leader>gs", "<cmd>Merge<cr>", { desc = "Merge: resolve conflicts (diffview)" })
 
 -- Same as <leader>l: close every diff view and go home with the file you
 -- were on open as a plain file. See config/layout.lua.

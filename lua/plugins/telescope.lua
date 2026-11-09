@@ -272,7 +272,7 @@ return {
     -- files you changed, not a search. You arrive to read it and move down it
     -- with hjkl -- typing would only filter a list you can already see. `i`
     -- still drops into the prompt when the list is long enough to want it.
-    vim.keymap.set("n", "<leader>gs", function()
+    vim.keymap.set("n", "<leader>gS", function()
       builtin.git_status({
         initial_mode = "normal",
         previewer = git_status_previewer,

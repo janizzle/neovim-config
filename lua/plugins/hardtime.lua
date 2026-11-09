@@ -3,8 +3,7 @@
 
 return {
   "m4xshen/hardtime.nvim",
-  event = "VeryLazy",
-  dependencies = { "MunifTanjim/nui.nvim" },
+  event = "VeryLazy",  dependencies = { "MunifTanjim/nui.nvim" },
   opts = {
     -- Once blocked, stay blocked: no time-based reset. A different key starts
     -- a fresh count, so after overshooting with jjj you can still k back.
