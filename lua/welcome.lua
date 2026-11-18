@@ -101,11 +101,14 @@ local sections = {
   }},
 
   { "Claude", {
-    row("<space>cc", "Session list",      "<cr> 1-9",  "Open session"),
-    row("d",         "Change directory", "q",       "Close list"),
-    BLANK,
-    sub("In an open session (type straight into Claude)"),
-    row("<Esc><Esc>", "Close, keeps running"),
+    row("<space>cc", "Sessions: pick / new", "<space>aa", "Toggle side panel"),
+    row("<space>an", "New session",       "<space>ar", "Rename session"),
+    sub("In the panel: type straight into Claude"),
+    row("<Esc><Esc>", "Hide, keeps running", "<C-w>hjkl", "To the next window"),
+    row("<C-w>← →",  "Resize the panel",  "⌥hjkl",     "Same as <C-w>hjkl"),
+    sub("In the session list (type to filter)"),
+    row("<cr>",      "Show in panel",     "<C-r>",     "Rename"),
+    row("<C-x>",     "Stop",              "<C-o>",     "Restart in other folder"),
   }},
 
   { "Buffers & views", {
@@ -143,8 +146,11 @@ local sections = {
   { "Debug (Xdebug, port 9003)", {
     row("<space>bc", "Start / continue",  "<space>bq", "Stop"),
     row("<space>bb", "Breakpoint",        "<space>bB", "Conditional"),
+    row("<space>bl", "Log point",         "<space>bX", "Clear breakpoints"),
     row("<space>bo", "Step over",         "<space>bi", "Step into"),
-    row("<space>bO", "Step out",          "<space>bu", "Debug panels"),
+    row("<space>bO", "Step out",          "<space>bC", "Run to cursor"),
+    row("<space>be", "Evaluate (x2 enter)", "<space>bw", "Watch expression"),
+    row("<space>bu", "Toggle panels",     "<space>br", "Console"),
   }},
 
   { "File tree", {

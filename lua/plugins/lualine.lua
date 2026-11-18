@@ -15,8 +15,18 @@ return {
       return #names > 0 and table.concat(names, ", ") or ""
     end
 
+    -- "Stopped at breakpoint", "Running", ... while a debug session is up.
+    local function debug_status()
+      local dap = package.loaded["dap"]
+      return dap and dap.session() and dap.status() or ""
+    end
+
     require("lualine").setup({
-      options = { theme = "auto", section_separators = "", component_separators = "" },
+      options = {
+        theme = "auto", section_separators = "", component_separators = "",
+        -- The empty split under the Claude panel (claude/panel.lua).
+        disabled_filetypes = { statusline = { "claudepanel" } },
+      },
       sections = {
         lualine_a = { "mode" },
         lualine_b = { "branch", "diff", "diagnostics" },
@@ -27,7 +37,13 @@ return {
           { "filename", fmt = function(str) return vim.b.welcome_screen and "Welcome" or str end },
           "aerial",
         },
-        lualine_x = { "encoding", "fileformat", "filetype", { lsp_clients, icon = "" } },
+        lualine_x = {
+          -- Claude sessions waiting for you ("󰚩 1 waiting · 2 done").
+          { function() return require("claude").statusline() end,
+            color = function() return require("claude").statusline_color() end },
+          { debug_status, icon = "", color = { fg = require("config.palette").tag } },
+          "encoding", "fileformat", "filetype", { lsp_clients, icon = "" },
+        },
         lualine_y = { "progress", total_lines },
         lualine_z = { "location" },
       },
