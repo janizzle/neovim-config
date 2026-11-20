@@ -11,6 +11,7 @@
 --                  <C-\><Esc>   send a real Esc to the program
 --                  <C-q>        hide (keeps running)
 --                  <C-w>hjkl ⌥hjkl   next window     <C-w>← →   resize
+--                  <C-w>s  <C-w>v    split: a new shell there, not a mirror
 --   Elsewhere      <C-q>        the last hidden terminal back (none: new shell)
 --   :term  <leader>tt           the terminal list (config/termlist.lua)
 --   :term {cmd}                 run cmd in a full-width row along the bottom
@@ -299,15 +300,31 @@ end
 
 -- Starting --------------------------------------------------------------------------
 
+--- The directory the terminal's program is in now (a shell you cd'd around
+--- in included), else Neovim's.
+function M.cwd(buf)
+  local ok, pid = pcall(vim.fn.jobpid, M.job(buf))
+  if ok and pid > 0 then
+    local link = vim.uv.fs_readlink("/proc/" .. pid .. "/cwd")
+    if link then return link end
+    local r = vim.system({ "lsof", "-a", "-p", tostring(pid), "-d", "cwd", "-Fn" }, { text = true }):wait(500)
+    local dir = r.code == 0 and r.stdout and r.stdout:match("\nn([^\n]+)")
+    if dir and vim.fn.isdirectory(dir) == 1 then return dir end
+  end
+  return vim.fn.getcwd()
+end
+
 --- Start a terminal and show it.
 ---   cmd   string (run through 'shell') or list; nil: your shell
----   opts  home ("bottom" | "right"), size, dir, name, focus,
+---   opts  home ("bottom" | "right"), size, dir, name, focus, win (start it
+---         in this window instead of a new one at its home),
 ---         close_on_exit (default: only for a plain shell), vars (buffer vars)
 --- Returns the buffer.
 function M.new(cmd, opts)
   opts = opts or {}
   local buf = api.nvim_create_buf(false, true)
-  vim.b[buf].term_home = opts.home or "bottom"
+  -- One started in a window you split gets its home worked out when hidden.
+  vim.b[buf].term_home = opts.home or (not opts.win and "bottom" or nil)
   vim.b[buf].term_size = opts.size
   vim.b[buf].term_name = opts.name
   vim.b[buf].term_cmd = type(cmd) == "table" and table.concat(cmd, " ") or (cmd or vim.o.shell)
@@ -316,12 +333,13 @@ function M.new(cmd, opts)
   vim.b[buf].term_close_on_exit = close
   for k, v in pairs(opts.vars or {}) do vim.b[buf][k] = v end
 
-  local win = place(buf)
+  local win = opts.win
+  if win then api.nvim_win_set_buf(win, buf) else win = place(buf) end
   local ok, err = pcall(api.nvim_win_call, win, function()
     vim.fn.jobstart(cmd or vim.o.shell, { term = true, cwd = opts.dir })
   end)
   if not ok then
-    pcall(api.nvim_win_close, win, true)
+    if not opts.win then pcall(api.nvim_win_close, win, true) end
     pcall(api.nvim_buf_delete, buf, { force = true })
     vim.notify("Could not start the terminal: " .. tostring(err), vim.log.levels.ERROR)
     return
@@ -372,6 +390,10 @@ local function setup_keys()
     for _, lhs in ipairs(vim.list_extend({ "<C-w>" .. dir }, vim.deepcopy(keys))) do
       map("t", lhs, [[<C-\><C-n><C-w>]] .. dir, { desc = "Terminal: window " .. alt.names[dir] })
     end
+  end
+  -- Splitting while typing, like from normal mode (a new shell, see WinNew).
+  for _, k in ipairs({ "s", "v" }) do
+    map("t", "<C-w>" .. k, [[<C-\><C-n><C-w>]] .. k, { desc = "Terminal: split (new shell)" })
   end
   local resize = require("config.resize")
   for key in pairs(resize.ARROW_DIRS) do
@@ -435,6 +457,27 @@ local function setup_events()
         if api.nvim_get_current_buf() == buf and api.nvim_get_mode().mode == "n" then
           vim.cmd("startinsert")
         end
+      end)
+    end,
+  })
+
+  -- A split of a terminal (<C-w>s, <C-w>v, :split, :vsplit) would show the
+  -- same session twice, mirrored. Like a tmux split, it gets a new shell
+  -- instead, started where the terminal you split from is.
+  api.nvim_create_autocmd("WinNew", {
+    group = group,
+    callback = function()
+      local win = api.nvim_get_current_win()
+      local buf = api.nvim_win_get_buf(win)
+      if not M.is_term(buf) or api.nvim_win_get_config(win).relative ~= "" then return end
+      local mirrored = false
+      for _, w in ipairs(api.nvim_tabpage_list_wins(0)) do
+        if w ~= win and api.nvim_win_get_buf(w) == buf then mirrored = true end
+      end
+      if not mirrored then return end
+      vim.schedule(function()
+        if not (api.nvim_win_is_valid(win) and api.nvim_win_get_buf(win) == buf) then return end
+        M.new(nil, { win = win, dir = M.cwd(buf), focus = api.nvim_get_current_win() == win })
       end)
     end,
   })
