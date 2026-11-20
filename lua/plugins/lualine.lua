@@ -24,8 +24,9 @@ return {
     require("lualine").setup({
       options = {
         theme = "auto", section_separators = "", component_separators = "",
-        -- The empty split under the Claude panel (claude/panel.lua).
-        disabled_filetypes = { statusline = { "claudepanel" } },
+        -- Matches laststatus = 3 (config/options.lua): split borders are drawn
+        -- as lines, not as one statusline per window.
+        globalstatus = true,
       },
       sections = {
         lualine_a = { "mode" },

@@ -32,6 +32,7 @@ return {
       numhl      = true,   -- tint changed line numbers
       linehl     = false,  -- whole-line highlight (toggle with <leader>hL)
       word_diff  = true,   -- mark the exact changed chars inline
+      preview_config = { border = "rounded" },  -- <leader>hp float, framed like the rest
       on_attach = function(bufnr)
         -- The merge result pane (config/mergeresult.lua) owns its gutter: the
         -- ▌ bar there means "conflict block, co/ct work on this line" and

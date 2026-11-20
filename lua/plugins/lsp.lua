@@ -11,7 +11,7 @@ return {
     local servers = require("config.servers")
     local names = vim.tbl_keys(servers)
 
-    require("mason").setup()
+    require("mason").setup({ ui = { border = "rounded" } })
     -- automatic_enable off: it would start every mason-installed server (a
     -- stray phpactor, say) next to the ones enabled explicitly below.
     require("mason-lspconfig").setup({ ensure_installed = names, automatic_enable = false })

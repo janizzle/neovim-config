@@ -4,10 +4,11 @@ return {
   "folke/which-key.nvim",
   event = "VeryLazy",
   opts = {
+    -- Framed like every other float (FloatBorder), not a bare block.
+    win = { border = "rounded" },
     spec = {
-      { "<leader>a", group = "claude" },
       { "<leader>b", group = "debug" },
-      { "<leader>c", group = "code / changes" },
+      { "<leader>c", group = "code / changes / claude" },
       { "<leader>d", group = "diff & merge" },
       { "<leader>f", group = "find" },
       { "<leader>g", group = "git" },

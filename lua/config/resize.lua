@@ -8,7 +8,7 @@ local api = vim.api
 local M = {}
 
 --- Move the border next to `win` (default: current) one step towards `dir`.
---- A panel across that border with a fixed size (file tree, Claude panel) is
+--- A panel across that border with a fixed size (file tree, a Claude column) is
 --- resized itself: growing this view would otherwise take the room from the
 --- view on the far side and move the wrong border.
 function M.nudge(dir, step, win)
@@ -32,10 +32,6 @@ function M.nudge(dir, step, win)
       api.nvim_win_set_height(target, math.max(1, api.nvim_win_get_height(target) + delta))
     end
   end)
-  -- WinResized only fires once resize mode is over (it waits for the main
-  -- loop); things that follow a split -- the Claude panel's float -- need to
-  -- know at every step.
-  api.nvim_exec_autocmds("User", { pattern = "ViewNudged", modeline = false })
 end
 
 M.ARROW_DIRS = { ["<Left>"] = "h", ["<Down>"] = "j", ["<Up>"] = "k", ["<Right>"] = "l" }

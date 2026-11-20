@@ -113,19 +113,18 @@ local function debug_panels_open()
   return false
 end
 
---- Close the debugger panels, the file tree and the Claude panel through their
---- own APIs. `:only` alone would take their windows away behind their backs:
---- dap-ui keeps forcing its buffers into windows it still thinks it owns (so a
---- debug panel ends up as the "main" window), and nvim-tree keeps believing it
---- is open (so the tree never comes back).
+--- Close the debugger panels and the file tree through their own APIs.
+--- `:only` alone would take their windows away behind their backs: dap-ui
+--- keeps forcing its buffers into windows it still thinks it owns (so a debug
+--- panel ends up as the "main" window), and nvim-tree keeps believing it is
+--- open (so the tree never comes back). Terminals need nothing: `:only` just
+--- hides them, and they keep running.
 local function close_panels()
   if package.loaded["dapui"] then pcall(require("dapui").close) end
   if package.loaded["dap"] then pcall(function() require("dap").repl.close() end) end
   if package.loaded["nvim-tree"] then
     pcall(function() require("nvim-tree.api").tree.close_in_all_tabs() end)
   end
-  local claude = package.loaded["claude.panel"]
-  if claude then pcall(claude.hide) end
 end
 
 --- The window to keep: the current one if it holds a file (or the welcome
@@ -150,8 +149,9 @@ end
 
 local function build(force)
   local target
-  local claude = package.loaded["claude.panel"]
-  local claude_open = claude and claude.win() ~= nil
+  -- Terminals on screen (Claude sessions among them) come back where they were.
+  local term = require("config.term")
+  local terminals = term.visible()
   -- Rebuilt by an autocmd (the tree went missing), a running debugger keeps
   -- its panels; <leader>l is the way out and closes them.
   local reopen_debug = not force and package.loaded["config.debug"] and debug_panels_open()
@@ -176,7 +176,7 @@ local function build(force)
 
   pcall(function() vim.cmd("NvimTreeOpen") end)
   if reopen_debug then pcall(require("config.debug").open, { focus = false }) end
-  if claude_open then pcall(claude.reopen, { focus = false }) end
+  for _, buf in ipairs(terminals) do pcall(term.show, buf, { focus = false }) end
   if vim.api.nvim_win_is_valid(main_win) then
     vim.api.nvim_set_current_win(main_win)
   end
@@ -186,7 +186,7 @@ end
 -- force = true (:Layout / <leader>l) rebuilds unconditionally: it is the way
 -- home from any diff view, the debugger and a leetcode session, with the file
 -- you were on open as a plain file. The automatic triggers leave diffs and
--- leetcode alone. The Claude panel stays, if it was open.
+-- leetcode alone. Terminals that were on screen (Claude too) stay.
 local function setup_layout(force)
   if state.building then return end
   if state.leetcode then
@@ -244,13 +244,6 @@ vim.api.nvim_create_autocmd("BufEnter", {
     if diff_tabpage() then return end
     if layout_intact() then return end
     vim.schedule(setup_layout)
-  end,
-})
-
-vim.api.nvim_create_autocmd("TermOpen", {
-  callback = function()
-    vim.bo.buflisted = false
-    vim.wo.colorcolumn = ""
   end,
 })
 

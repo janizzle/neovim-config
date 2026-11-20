@@ -24,10 +24,11 @@ vim.opt.rtp:prepend(lazypath)
 
 -- Required directly rather than via lazy's `import = "plugins"`: lazy rebuilds
 -- the rtp at setup and drops our prepended dir; package.path still resolves.
-require("lazy").setup(require("plugins"))
+require("lazy").setup(require("plugins"), { ui = { border = "rounded" } })
 
 require("config.ui")
 require("config.keymaps")
+require("config.term")
 require("config.blame")
 require("config.sidediff")
 require("config.mergeresult")

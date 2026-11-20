@@ -10,8 +10,8 @@ return {
     -- A count (5j) or an operator (d, y, c, p, ...) also resets the counter.
     max_time = math.huge,
     allow_different_key = true,
-    -- Also enforce inside the file tree. Not in the Claude session list
-    -- (claude/picker.lua): it is a menu, j/k there is picking, not moving.
-    disabled_filetypes = { NvimTree = false, claude_sessions = true },
+    -- Also enforce inside the file tree. Not in the terminal and Claude lists
+    -- (config/termlist.lua, claude/picker.lua): menus, j/k there is picking.
+    disabled_filetypes = { NvimTree = false, termlist = true, claudelist = true },
   },
 }

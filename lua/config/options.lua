@@ -10,6 +10,12 @@ vim.opt.relativenumber = true  -- hybrid gutter: absolute on the cursor line, re
 vim.opt.signcolumn = "yes"
 vim.opt.cursorline = true
 vim.opt.showtabline = 2
+-- One statusline for the whole screen. With a statusline per window, the only
+-- thing between two stacked windows (the conflict list above diffview's file
+-- panel, the code above the debugger tray) is an inactive statusline; with a
+-- global one Neovim draws a real ─ line there, joined to the │ lines, so every
+-- pane is boxed in. Panes that need a name carry it in their winbar.
+vim.opt.laststatus = 3
 vim.opt.expandtab = true
 vim.opt.tabstop = 4
 vim.opt.shiftwidth = 4

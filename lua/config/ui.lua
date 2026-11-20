@@ -35,7 +35,8 @@ local function improve_ui_colors()
   hl(0, "CurSearch",     { fg = C.bg, bg = mag, bold = true })
   hl(0, "MatchParen",    { fg = mag, bold = true, bg = "NONE" })
 
-  -- Floating-window borders (VertSplit left at the theme default).
+  -- Floating-window borders: blue, they sit on top of everything. Split
+  -- borders (WinSeparator) stay a quiet grey, set in plugins/colorscheme.lua.
   hl(0, "FloatBorder",   { fg = blue, bg = "NONE" })
   hl(0, "FloatTitle",    { fg = mag, bold = true, bg = "NONE" })
 
@@ -198,7 +199,7 @@ local function improve_ui_colors()
   -- sit on the theme's lighter grey.
   hl(0, "NvimTreeNormal",    { fg = C.fg, bg = C.bg })
   hl(0, "NvimTreeNormalNC",  { fg = C.fg, bg = C.bg })
-  hl(0, "NvimTreeWinSeparator", { fg = C.bg_alt, bg = C.bg })
+  hl(0, "NvimTreeWinSeparator", { fg = C.border, bg = C.bg })
   hl(0, "NvimTreeEndOfBuffer",  { fg = C.bg, bg = C.bg })
 
   -- Buffer tabs. Names are neutral grey (darcula's TabLineSel is olive green,
@@ -224,7 +225,8 @@ local function improve_ui_colors()
   hl(0, "BufferLineCloseButton",       { fg = tab_dim,  bg = C.bg })
   hl(0, "BufferLineCloseButtonVisible", { fg = tab_open, bg = C.bg })
   hl(0, "BufferLineCloseButtonSelected", { fg = C.fg,   bg = C.bg_sel })
-  hl(0, "BufferLineOffsetSeparator",   { fg = C.bg_alt, bg = C.bg })
+  -- Above the tree's border: carries that line up through the tab strip.
+  hl(0, "BufferLineOffsetSeparator",   { fg = C.border, bg = C.bg })
   hl(0, "BufferLineTabSeparator",      { fg = C.bg_alt, bg = C.bg })
   hl(0, "BufferLineTruncMarker",       { fg = tab_dim,  bg = C.bg })
 

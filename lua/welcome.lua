@@ -101,14 +101,17 @@ local sections = {
   }},
 
   { "Claude", {
-    row("<space>cc", "Sessions: pick / new", "<space>aa", "Toggle side panel"),
-    row("<space>an", "New session",       "<space>ar", "Rename session"),
-    sub("In the panel: type straight into Claude"),
-    row("<Esc><Esc>", "Hide, keeps running", "<C-w>hjkl", "To the next window"),
-    row("<C-w>← →",  "Resize the panel",  "⌥hjkl",     "Same as <C-w>hjkl"),
-    sub("In the session list (type to filter)"),
-    row("<cr>",      "Show in panel",     "<C-r>",     "Rename"),
-    row("<C-x>",     "Stop",              "<C-o>",     "Restart in other folder"),
+    row("<space>cc", "Sessions (:Claude)", "<space>cN", "New session"),
+    row("<space>cy", "Send selection",    "<space>ch", "Show / hide Claude"),
+    sub("In the list: <cr> show · n new · R resume · r rename · x stop"),
+  }},
+
+  { "Terminals", {
+    row(":term",     "Terminal list",     "<space>tt", "Same"),
+    row(":term cmd", "Run cmd at bottom", "<C-q>",     "Hide / bring back"),
+    sub("In any terminal (a Claude session is one too)"),
+    row("<Esc>",     "Normal mode: / v y", "i  a",     "Back to typing"),
+    row("<C-\\><Esc>", "Esc to the program", "<C-w>hjkl", "To the next window"),
   }},
 
   { "Buffers & views", {

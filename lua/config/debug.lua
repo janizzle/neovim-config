@@ -60,8 +60,8 @@ local function layout_open(i)
   return ok and windows.layouts[i] ~= nil and windows.layouts[i]:is_open()
 end
 
---- dap-ui splits off the current window, which fails in a float (the Claude
---- panel, a picker): build from the editor window instead.
+--- dap-ui splits off the current window, which fails in a float (a picker)
+--- and lands oddly next to a terminal: build from the editor window instead.
 local function from_editor(fn)
   if api.nvim_win_get_config(0).relative == "" then return fn() end
   local win = require("config.windows").find_main_window()

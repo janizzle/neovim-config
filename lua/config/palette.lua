@@ -15,6 +15,10 @@ return {
   line_nr     = "#4E5157",
   whitespace  = "#2A2A31",   -- listchars dots / eol arrows: present but quiet
   colorcol    = "#2E2E35",   -- thin line-length rule (virt-column)
+  -- Lines between split windows (WinSeparator): neutral grey, a step brighter
+  -- than the line-length rule so the two never read alike. Floats keep the
+  -- blue FloatBorder (config/ui.lua).
+  border      = "#404349",
 
   -- Accents -------------------------------------------------------------------
   blue        = "#61AFEF",

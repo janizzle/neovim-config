@@ -23,8 +23,9 @@ return {
       -- Chrome that would otherwise keep the theme's lighter grey and read as
       -- a seam against the near-black background.
       hl(0, "EndOfBuffer",    { fg = C.bg, bg = C.bg })
-      hl(0, "WinSeparator",   { fg = C.bg_alt, bg = C.bg })
-      hl(0, "VertSplit",      { fg = C.bg_alt, bg = C.bg })
+      -- Borders between split windows: visible, so panes read as panes.
+      hl(0, "WinSeparator",   { fg = C.border, bg = C.bg })
+      hl(0, "VertSplit",      { fg = C.border, bg = C.bg })
       hl(0, "Folded",         { fg = C.line_nr, bg = C.bg_alt })
       hl(0, "FoldColumn",     { fg = C.line_nr, bg = "NONE" })
       hl(0, "ColorColumn",    { bg = C.bg_alt })
